@@ -35,7 +35,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # ⚙️ SYSTEM CONFIGURATION & PATHS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BOOKS_FOLDER = r"C:\RAG\BOOKS_FOLDER\resources"  # Ensure this matches your PC
+# Fix for Streamlit Cloud (Linux)
+BOOKS_FOLDER = os.path.join(BASE_DIR, "resources")  # Ensure this matches your PC
 UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploaded_books")
 PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
 HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
@@ -943,3 +944,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
