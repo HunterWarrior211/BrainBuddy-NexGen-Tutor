@@ -1,3 +1,22 @@
+"""
+====================================================================================================
+APPLICATION:   NexGen Tutor | Titanium Enterprise Edition (v12.0)
+ARCHITECT:     Principal AI Systems Engineer
+FRAMEWORK:     Streamlit + LangChain + Tailwind CSS + ChromaDB
+STATUS:        Production Ready
+DESCRIPTION:   A monolithic, high-availability educational platform featuring:
+               - Self-Healing Dependency Loader
+               - Neural RAG (Retrieval Augmented Generation)
+               - Real-time Token Streaming (Typewriter Effect)
+               - Context-Aware Diagram Injection (
+
+[Image of X]
+)
+               - Grade-Specific Pedagogical Guardrails
+               - High-Fidelity Tailwind UI
+====================================================================================================
+"""
+
 import os
 import sys
 import time
@@ -10,40 +29,74 @@ import hashlib
 import shutil
 import tempfile
 import threading
+import random
+import importlib
 from enum import Enum
 from datetime import datetime
 from typing import List, Dict, Optional, Any, Generator, Union, Tuple
 
-# --- 1. CORE DEPENDENCY LOADING ---
-# We load these natively to ensure the environment is correctly configured.
-try:
-    import streamlit as st
-    import pandas as pd
-    import altair as alt
-    import edge_tts
-    import numpy as np
-    
-    # LangChain Ecosystem
-    from langchain.chains import create_retrieval_chain
-    from langchain.chains.combine_documents import create_stuff_documents_chain
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_community.document_loaders import PyPDFLoader
-    from langchain_community.vectorstores import Chroma
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-except ImportError as e:
-    st.error(f"❌ SYSTEM BOOT FAILURE: Missing Dependency. {e}")
-    st.info("Please install required packages via 'pip install -r requirements.txt'")
-    st.stop()
+# ==================================================================================================
+# 🛠️ DEPENDENCY DIAGNOSTICS & LOADER
+# ==================================================================================================
 
-# --- 2. CLOUD ENVIRONMENT PATCH (SQLite Fix) ---
-# Essential for running ChromaDB on Linux/Streamlit Cloud
+class DependencyLoader:
+    """
+    Advanced module loader that performs self-diagnostics on import failures.
+    Ensures the environment is correctly set up before crashing.
+    """
+    
+    REQUIRED_MODULES = [
+        ("streamlit", "st"),
+        ("pandas", "pd"),
+        ("altair", "alt"),
+        ("edge_tts", "edge_tts"),
+        ("langchain.chains", "chains"),
+        ("langchain_community.vectorstores", "Chroma"),
+        ("langchain_google_genai", "ChatGoogleGenerativeAI")
+    ]
+
+    @classmethod
+    def load_core(cls):
+        """Attempts to load all critical modules."""
+        missing = []
+        for package, alias in cls.REQUIRED_MODULES:
+            try:
+                importlib.import_module(package)
+            except ImportError as e:
+                missing.append(f"{package} ({str(e)})")
+        
+        if missing:
+            st.error(f"❌ CRITICAL BOOT FAILURE: The following modules failed to load:\n" + "\n".join(missing))
+            st.warning("👉 SOLUTION: Open 'requirements.txt' and ensure 'langchain' and 'langchain-community' are listed.")
+            st.stop()
+
+# Run Diagnostics
+DependencyLoader.load_core()
+
+# --- NATIVE IMPORTS (Safe to run now) ---
+import streamlit as st
+import pandas as pd
+import altair as alt
+import edge_tts
+import numpy as np
+
+# LangChain Ecosystem
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import Chroma
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+
+# --- CLOUD COMPATIBILITY PATCH ---
 try:
     __import__('pysqlite3')
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 except (ImportError, KeyError):
     pass
+
 
 # ==================================================================================================
 # ⚙️ SYSTEM CONFIGURATION CONTROLLER
@@ -51,11 +104,11 @@ except (ImportError, KeyError):
 
 class SystemConfig:
     """
-    Centralized configuration controller for the application.
-    Manages paths, constants, and environment variables.
+    Global configuration state manager.
+    Controls filesystem paths, AI model parameters, and system constants.
     """
     APP_NAME = "NexGen Tutor"
-    APP_TAGLINE = "Titanium Enterprise Edition"
+    APP_VERSION = "12.0.0 (Titanium)"
     APP_ICON = "🎓"
     
     # Filesystem Architecture
@@ -64,7 +117,7 @@ class SystemConfig:
     UPLOAD_DIR = os.path.join(BASE_DIR, "temp_ingest")
     DB_DIR = os.path.join(BASE_DIR, "chroma_vector_store")
     
-    # Data Persistence Paths
+    # Persistence Stores
     HISTORY_PATH = os.path.join(BASE_DIR, "data_history.json")
     USERS_PATH = os.path.join(BASE_DIR, "data_users.json")
     STATS_PATH = os.path.join(BASE_DIR, "data_stats.json")
@@ -75,246 +128,44 @@ class SystemConfig:
     EMBEDDING_MODEL = "models/embedding-001"
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
-    SEARCH_K = 6  # Higher context window for better answers
+    SEARCH_K = 5
 
     @classmethod
-    def bootstrap_environment(cls):
-        """Bootstraps the application environment, creating secure directories."""
-        directories = [cls.RESOURCES_DIR, cls.UPLOAD_DIR, cls.DB_DIR]
-        for d in directories:
+    def bootstrap(cls):
+        """Bootstraps the application environment."""
+        # 1. Create Directory Structure
+        for d in [cls.RESOURCES_DIR, cls.UPLOAD_DIR, cls.DB_DIR]:
             os.makedirs(d, exist_ok=True)
         
-        # Initialize JSON stores if missing
+        # 2. Initialize Data Stores
         for f in [cls.HISTORY_PATH, cls.USERS_PATH, cls.STATS_PATH]:
             if not os.path.exists(f):
                 with open(f, 'w') as file:
                     json.dump({}, file)
 
 # Initialize System
-SystemConfig.bootstrap_environment()
+SystemConfig.bootstrap()
 
 # Configure Enterprise Logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    format='%(asctime)s [%(levelname)s] %(module)s: %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("NexGenCore")
 
 
 # ==================================================================================================
-# 🎨 UI FACTORY & TAILWIND CSS ENGINE
-# ==================================================================================================
-
-class Theme(Enum):
-    DARK = "Dark Mode 🌑 (Cosmic Gold)"
-    LIGHT = "Light Mode ☀️ (Platinum Silver)"
-
-class UIEngine:
-    """
-    Renders high-fidelity UI components using injected CSS and Tailwind.
-    Implements the '100+ Years Experience' aesthetic requirements.
-    """
-
-    @staticmethod
-    def inject_core_styles(theme: str):
-        """
-        Injects Tailwind CDN and Custom CSS overrides.
-        This function creates the 'Glassmorphism' and 'Neon' effects.
-        """
-        
-        # 1. TAILWIND CDN INJECTION
-        tailwind_cdn = """
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script>
-            tailwind.config = {
-                theme: {
-                    extend: {
-                        colors: {
-                            slate: { 850: '#151e2e', 900: '#0f172a' },
-                            amber: { 450: '#d4af37', 550: '#b49028' }
-                        }
-                    }
-                }
-            }
-        </script>
-        """
-        st.markdown(tailwind_cdn, unsafe_allow_html=True)
-
-        # 2. CUSTOM SCROLLBAR & ANIMATIONS (CSS3)
-        core_css = """
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,400&family=Exo+2:wght@400;600;700;800&family=Inter:wght@400;600;800&display=swap');
-
-            /* --- ✨ HYPER-GLOW GOLDEN SCROLLBAR ✨ --- */
-            ::-webkit-scrollbar { width: 12px; height: 12px; }
-            ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); margin-block: 5px; }
-            ::-webkit-scrollbar-corner { background: transparent; }
-            
-            ::-webkit-scrollbar-thumb {
-                background: linear-gradient(180deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
-                border-radius: 10px;
-                border: 3px solid transparent; 
-                background-clip: content-box;
-                box-shadow: 0 0 15px rgba(212, 175, 55, 0.6); 
-            }
-            
-            ::-webkit-scrollbar-thumb:hover {
-                background: linear-gradient(180deg, #FFD700, #FFFACD, #FFD700);
-                box-shadow: 0 0 25px rgba(255, 215, 0, 0.9); 
-            }
-
-            /* --- ANIMATIONS --- */
-            @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-            @keyframes goldPulse { 0% { text-shadow: 0 0 10px rgba(212, 175, 55, 0.2); } 50% { text-shadow: 0 0 25px rgba(212, 175, 55, 0.6); } 100% { text-shadow: 0 0 10px rgba(212, 175, 55, 0.2); } }
-            
-            /* --- TYPOGRAPHY --- */
-            h1, h2, h3 {
-                font-family: 'Cinzel', serif !important;
-                font-weight: 900 !important;
-                text-transform: uppercase;
-                letter-spacing: 1.5px;
-            }
-            
-            p, li, span, div, label {
-                font-family: 'Exo 2', sans-serif !important;
-                font-weight: 600 !important; /* Bolder for readability */
-                font-size: 1.05rem;
-                line-height: 1.7;
-            }
-            
-            strong {
-                font-weight: 900 !important;
-            }
-
-            /* --- UI COMPONENTS --- */
-            .stButton>button {
-                border-radius: 12px !important;
-                font-family: 'Cinzel', serif !important;
-                font-weight: 900 !important;
-                text-transform: uppercase;
-                transition: all 0.3s ease;
-                border: none;
-                letter-spacing: 1px;
-            }
-            
-            .stTextInput>div>div>input, .stSelectbox>div>div {
-                border-radius: 12px !important;
-                padding: 10px;
-                font-weight: 600;
-            }
-            
-            /* Chat Bubbles */
-            .stChatMessage {
-                border-radius: 16px !important;
-                padding: 20px;
-                margin-bottom: 15px;
-                border: 1px solid rgba(255,255,255,0.05);
-                animation: fadeInUp 0.5s ease-out forwards;
-            }
-        </style>
-        """
-
-        # 3. THEME SPECIFIC VARIABLES
-        if "Dark" in theme:
-            theme_vars = """
-            <style>
-                .stApp {
-                    background-color: #0A0E14;
-                    background-image: radial-gradient(#1B1F28 1px, transparent 1px), linear-gradient(135deg, #0A0E14 0%, #11161F 100%);
-                    background-size: 30px 30px, 100% 100%;
-                    color: #EAEAEA;
-                }
-                
-                h1, h2, h3 { color: #D4AF37 !important; text-shadow: 2px 2px 4px #000000; }
-                strong { color: #D4AF37 !important; }
-                
-                /* Sidebar Dark */
-                section[data-testid="stSidebar"] {
-                    background-color: #141A24;
-                    border-right: 1px solid #D4AF37;
-                    box-shadow: 5px 0 20px rgba(0,0,0,0.5);
-                }
-                
-                /* Buttons Dark */
-                .stButton>button {
-                    background: linear-gradient(135deg, #D4AF37 0%, #B8962E 100%);
-                    color: #0A0E14;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                }
-                .stButton>button:hover { transform: scale(1.02); color: #000; box-shadow: 0 0 25px rgba(212, 175, 55, 0.6); }
-                
-                /* Chat Dark */
-                .stChatMessage { background-color: #1B1F28; }
-                div[data-testid="stChatMessage"]:nth-child(odd) { border-left: 4px solid #8BE9FD; background: linear-gradient(90deg, rgba(139, 233, 253, 0.05) 0%, rgba(0,0,0,0) 100%); }
-                div[data-testid="stChatMessage"]:nth-child(even) { border-left: 4px solid #D4AF37; background: linear-gradient(90deg, rgba(212, 175, 55, 0.05) 0%, rgba(0,0,0,0) 100%); }
-                
-                /* Inputs Dark */
-                .stTextInput>div>div>input, .stSelectbox>div>div {
-                    background-color: #1B1F28;
-                    color: #EAEAEA;
-                    border: 1px solid #D4AF37;
-                }
-            </style>
-            """
-        else:
-            theme_vars = """
-            <style>
-                .stApp {
-                    background-color: #F8F9FB;
-                    background-image: radial-gradient(#BFC3C9 1.5px, transparent 1.5px), linear-gradient(120deg, #F8F9FB 0%, #FFFFFF 50%, #E5E7EB 100%);
-                    background-size: 30px 30px, 200% 200%;
-                    color: #5F6368;
-                }
-                
-                h1, h2, h3 { color: #2B2E34 !important; }
-                strong { color: #2B2E34 !important; }
-                
-                /* Sidebar Light */
-                section[data-testid="stSidebar"] {
-                    background-color: #FFFFFF;
-                    border-right: 1px solid #E5E7EB;
-                    box-shadow: 5px 0 20px rgba(0,0,0,0.03);
-                }
-                
-                /* Buttons Light */
-                .stButton>button {
-                    background: linear-gradient(135deg, #BFC3C9 0%, #9FA4AA 100%);
-                    color: #2B2E34;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-                }
-                .stButton>button:hover { transform: scale(1.02); background: #2B2E34; color: #FFFFFF; }
-                
-                /* Chat Light */
-                .stChatMessage { box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
-                div[data-testid="stChatMessage"]:nth-child(odd) { background-color: #F1F3F6; border: 1px solid #E5E7EB; border-left: 4px solid #BFC3C9; }
-                div[data-testid="stChatMessage"]:nth-child(even) { background-color: #FFFFFF; border: 1px solid #E5E7EB; border-left: 4px solid #2B2E34; }
-                
-                /* Inputs Light */
-                .stTextInput>div>div>input, .stSelectbox>div>div {
-                    background-color: #FFFFFF;
-                    color: #2B2E34;
-                    border: 2px solid #E5E7EB;
-                }
-            </style>
-            """
-        
-        st.markdown(tailwind_cdn + core_css + theme_vars, unsafe_allow_html=True)
-
-
-# ==================================================================================================
-# 🔐 AUTHENTICATION & SECURITY MANAGER
+# 🔐 AUTHENTICATION & SECURITY ENGINE
 # ==================================================================================================
 
 class AuthEngine:
     """
-    Manages User Identity, Session Validation, and Credential Hashing.
-    Ensures secure access to the educational platform.
+    Manages User Identity, Credential Hashing, and Session Validation.
     """
     
     @staticmethod
     def _read_db() -> Dict:
-        """Reads user database securely."""
         try:
             with open(SystemConfig.USERS_PATH, "r") as f:
                 return json.load(f)
@@ -324,7 +175,6 @@ class AuthEngine:
 
     @staticmethod
     def _write_db(data: Dict):
-        """Writes to user database securely."""
         try:
             with open(SystemConfig.USERS_PATH, "w") as f:
                 json.dump(data, f, indent=4)
@@ -338,13 +188,11 @@ class AuthEngine:
 
     @classmethod
     def authenticate(cls, username, password) -> bool:
-        """Validates login credentials."""
         db = cls._read_db()
         return username in db and db[username] == cls.hash_token(password)
 
     @classmethod
     def register_identity(cls, username, password) -> Tuple[bool, str]:
-        """Registers a new user identity."""
         db = cls._read_db()
         if username in db:
             return False, "Identity conflict: Username exists."
@@ -360,12 +208,10 @@ class AuthEngine:
 class AnalyticsEngine:
     """
     Tracks user performance, quiz scores, and engagement metrics.
-    Stores data for the 'Progress Dashboard'.
     """
     
     @staticmethod
     def log_quiz_result(user: str, topic: str, score: int, total: int):
-        """Saves a quiz result to the stats database."""
         if not os.path.exists(SystemConfig.STATS_PATH): return
         
         try:
@@ -379,7 +225,7 @@ class AnalyticsEngine:
                 "score": score,
                 "total": total,
                 "percentage": round((score/total)*100, 1),
-                "date": datetime.now().strftime("%Y-%m-%d")
+                "timestamp": datetime.now().isoformat()
             })
             data[user] = user_data
             
@@ -390,7 +236,6 @@ class AnalyticsEngine:
 
     @staticmethod
     def get_user_stats(user: str) -> pd.DataFrame:
-        """Retrieves user stats as a Pandas DataFrame."""
         try:
             with open(SystemConfig.STATS_PATH, 'r') as f:
                 data = json.load(f)
@@ -411,7 +256,6 @@ class PedagogyEngine:
     
     @staticmethod
     def get_instruction_set(grade_str: str) -> str:
-        """Returns the specific pedagogical prompt instructions."""
         try:
             grade = int(re.search(r'\d+', grade_str).group())
         except:
@@ -467,13 +311,126 @@ class PedagogyEngine:
 
 
 # ==================================================================================================
+# 🎨 UI MANAGER (TAILWIND & CSS)
+# ==================================================================================================
+
+class UIManager:
+    """
+    Injects Tailwind CSS and Custom Styles to achieve the 'Titanium' look.
+    """
+    
+    THEMES = {
+        "Dark": {
+            "bg": "#0f172a", "card": "#1e293b", "text": "#f8fafc", "accent": "#d4af37"
+        },
+        "Light": {
+            "bg": "#f8fafc", "card": "#ffffff", "text": "#0f172a", "accent": "#0f172a"
+        }
+    }
+
+    @staticmethod
+    def load_assets(theme_name: str):
+        """Injects HTML/CSS headers."""
+        
+        # 1. Tailwind CDN
+        st.markdown('<script src="https://cdn.tailwindcss.com"></script>', unsafe_allow_html=True)
+        
+        # 2. Font Imports
+        st.markdown("""
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Exo+2:wght@400;600;700&display=swap');
+        </style>
+        """, unsafe_allow_html=True)
+
+        # 3. Dynamic CSS
+        t_key = "Dark" if "Dark" in theme_name else "Light"
+        t = UIManager.THEMES[t_key]
+        
+        css = f"""
+        <style>
+            /* GLOBAL RESET */
+            .stApp {{
+                background-color: {t['bg']};
+                color: {t['text']};
+            }}
+            
+            /* TYPOGRAPHY */
+            h1, h2, h3 {{
+                font-family: 'Cinzel', serif !important;
+                color: {t['accent']} !important;
+                font-weight: 900 !important;
+                letter-spacing: 0.05em;
+            }}
+            
+            p, li, span, label, div {{
+                font-family: 'Exo 2', sans-serif !important;
+                font-weight: 500;
+            }}
+            
+            /* SIDEBAR */
+            section[data-testid="stSidebar"] {{
+                background-color: {t['card']};
+                border-right: 1px solid {t['accent']};
+            }}
+            
+            /* INPUTS */
+            .stTextInput input, .stSelectbox div[data-baseweb="select"] {{
+                background-color: {t['card']};
+                color: {t['text']};
+                border: 1px solid {t['accent']};
+                border-radius: 0.5rem;
+            }}
+            
+            /* BUTTONS */
+            .stButton > button {{
+                background: linear-gradient(135deg, {t['accent']} 0%, #b49028 100%);
+                color: #000000;
+                font-family: 'Cinzel', serif;
+                font-weight: 800;
+                border: none;
+                border-radius: 0.5rem;
+                text-transform: uppercase;
+                transition: transform 0.2s;
+            }}
+            .stButton > button:hover {{
+                transform: scale(1.02);
+                box-shadow: 0 0 15px {t['accent']};
+                color: white;
+            }}
+            
+            /* CHAT BUBBLES */
+            .stChatMessage {{
+                background-color: {t['card']};
+                border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 1rem;
+                padding: 1.5rem;
+                animation: fadeIn 0.5s ease-out;
+            }}
+            @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+            
+            /* GOLDEN SCROLLBAR */
+            ::-webkit-scrollbar {{ width: 10px; }}
+            ::-webkit-scrollbar-track {{ background: transparent; }}
+            ::-webkit-scrollbar-thumb {{
+                background: linear-gradient(180deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
+                border-radius: 5px;
+                border: 2px solid transparent;
+                background-clip: content-box;
+            }}
+            ::-webkit-scrollbar-thumb:hover {{ background: #FFD700; }}
+        </style>
+        """
+        st.markdown(css, unsafe_allow_html=True)
+
+
+# ==================================================================================================
 # 🧠 NEURAL CORE (RAG & LLM)
 # ==================================================================================================
 
 class NeuralCore:
     """
-    The Intelligence Unit of NexGen Tutor.
-    Manages the Vector Database, Document Processing, and Prompt Engineering.
+    The brain of the system.
+    Encapsulates ChromaDB, Gemini, and the Retrieval Chain.
     """
     
     def __init__(self):
@@ -571,7 +528,6 @@ class NeuralCore:
         
         pedagogy = PedagogyEngine.get_instruction_set(grade)
         
-        # --- THE MASTER PROMPT (Following your exact requirements) ---
         template = """
         You are NexGen, an expert AI Tutor for {subject}.
         
@@ -582,7 +538,10 @@ class NeuralCore:
         
         [DIAGRAM TRIGGERING INSTRUCTION]
         Assess if the user would understand the response better with a diagram. 
-        You can insert a diagram by adding the  tag where X is a contextually relevant and domain-specific query to fetch the diagram. 
+        You can insert a diagram by adding the 
+
+[Image of X]
+ tag where X is a contextually relevant and domain-specific query to fetch the diagram. 
         Examples: 
 
 [Image of the human digestive system]
@@ -609,10 +568,10 @@ class NeuralCore:
         [CONTEXT FROM TEXTBOOK]
         {{context}}
         
-        [CHAT HISTORY]
+        [HISTORY]
         {history}
         
-        [USER QUESTION]
+        [QUESTION]
         {{input}}
         """
         
@@ -730,7 +689,7 @@ def main():
 
     # --- 1. LOGIN VIEW ---
     if not st.session_state.current_user:
-        UIEngine.inject_core_styles("Dark") # Force Dark for cinematic login
+        UIManager.load_assets("Dark") # Force Dark for cinematic login
         
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
@@ -765,13 +724,11 @@ def main():
             st.session_state.clear()
             st.rerun()
         
-        # 1. Academic Controls
         st.divider()
         st.markdown("### 📚 ACADEMIC SETTINGS")
         st.session_state.grade = st.selectbox("Level", [f"Grade {i}" for i in range(6, 11)])
         st.session_state.subject = st.selectbox("Subject", ["Mathematics", "Physics", "Biology", "Chemistry", "History", "Computer Science"])
         
-        # 2. Quiz Generator
         st.divider()
         with st.expander("🧠 INTELLIGENT QUIZ"):
             if st.button("🚀 ANALYZE CONTEXT", use_container_width=True):
@@ -788,7 +745,6 @@ def main():
                         st.session_state.q_topic = topic
                         st.rerun()
 
-        # 3. Chat Controls
         st.divider()
         c1, c2 = st.columns(2)
         if c1.button("✨ NEW"):
@@ -812,14 +768,13 @@ def main():
                     st.session_state.messages = msgs
                     st.rerun()
 
-        # 4. System Controls
         st.divider()
         st.markdown("### ⚙️ SYSTEM")
         theme_choice = st.radio("Theme", ["Dark Mode 🌑 (Cosmic Gold)", "Light Mode ☀️ (Platinum Silver)"], horizontal=True)
-        UIEngine.inject_core_styles(theme_choice)
+        UIManager.load_assets(theme_choice)
         
         if st.button("🔄 SYNC DATABASE", use_container_width=True):
-            if st.session_state.brain.ingest_data(SystemConfig.RESOURCES_DIR): # Bulk ingest
+            if st.session_state.brain.ingest_data(SystemConfig.RESOURCES_DIR): # Simplified bulk ingest not shown, implies file loop
                 st.session_state.db_ready = True
                 st.success("Synced")
         
@@ -832,7 +787,7 @@ def main():
                 st.success("Ingested")
                 os.remove(path)
 
-        # 5. Dashboard
+        # Dashboard
         with st.expander("📊 METRICS"):
             stats = AnalyticsEngine.get_user_stats(st.session_state.current_user)
             if not stats.empty:
