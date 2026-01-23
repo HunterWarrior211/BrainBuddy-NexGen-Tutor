@@ -979,7 +979,7 @@ def main():
                     else:
                         complexity_instruction = """
                         **Target Audience: Grade 9-10 Student.**
-                        - **Definition:** Academic, technical, exam-focused.
+                        - **Definition:** Academic, technical, exam-focused,full detailed and proper .
                         - **Tone:** Professional.
                         """
 
@@ -995,21 +995,7 @@ def main():
                     2. Adopt the following Pedagogical Style:
                     {pedagogy}
                     
-                    [DIAGRAM TRIGGERING INSTRUCTION]
-                    Assess if the user would understand the response better with a diagram. 
-                    You can insert a diagram by adding the 
 
-[Image of X]
- tag where X is a contextually relevant and domain-specific query to fetch the diagram. 
-                    Examples: 
-
-[Image of the human digestive system]
-, 
-
-[Image of a neuron]
- etc. 
-                    Place the image tag immediately before or after the relevant text.
-                    
                     [OUTPUT FORMAT - STRICT MARKDOWN]
                     1. **Core Concept:** (Bold definition)
                     2. **Key Points:** (Bullet points tailored to grade)
@@ -1065,3 +1051,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
