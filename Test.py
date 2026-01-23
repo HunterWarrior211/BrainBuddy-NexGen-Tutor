@@ -1,6 +1,5 @@
 import os
-# --- 1. SQLITE FIX FOR STREAMLIT CLOUD ---
-# (This is required for ChromaDB to work on Linux)
+# --- 1. SQLITE FIX FOR STREAMLIT CLOUD (MUST BE AT THE VERY TOP) ---
 try:
     __import__('pysqlite3')
     import sys
@@ -38,11 +37,11 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # ==========================================
-# ⚙️ SYSTEM CONFIGURATION (CLOUD FRIENDLY)
+# ⚙️ SYSTEM CONFIGURATION & PATHS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ⚠️ FIXED PATHS (No more C: drive)
+# ⚠️ FIX: Relative paths for Cloud Compatibility
 BOOKS_FOLDER = os.path.join(BASE_DIR, "resources") 
 UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploaded_books")
 PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
@@ -50,7 +49,7 @@ HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 QUIZ_FILE = os.path.join(BASE_DIR, "quiz_scores.json")
 
-# Ensure directories exist
+# Ensure critical directories exist
 for path in [UPLOAD_DIR, BOOKS_FOLDER, PERSIST_DIR]:
     if not os.path.exists(path):
         os.makedirs(path)
@@ -64,12 +63,36 @@ st.set_page_config(
 )
 
 # ==========================================
-# 🎨 HIGH-END CSS STYLING (PRESERVED)
+# 🎨 HIGH-END CSS STYLING (RESPONSIVE)
 # ==========================================
 DARK_CSS = """
 <style>
     /* --- FONTS --- */
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,400&family=Exo+2:wght@300;400;600&family=Inter:wght@400;600&display=swap');
+
+    /* --- GOLDEN SCROLLBAR (The Fix) --- */
+    /* WebKit Browsers (Chrome, Edge, Safari) */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #0A0E14; 
+    }
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #D4AF37, #8B7328); 
+        border-radius: 6px;
+        border: 2px solid #0A0E14; /* Creates padding effect */
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #FFD700; /* Brighter gold on hover */
+    }
+    
+    /* Firefox */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #D4AF37 #0A0E14;
+    }
 
     /* --- ANIMATIONS --- */
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -85,7 +108,7 @@ DARK_CSS = """
         color: #EAEAEA;
     }
 
-    /* --- TYPOGRAPHY --- */
+    /* --- TYPOGRAPHY (PC) --- */
     h1 {
         font-family: 'Cinzel', serif !important;
         font-weight: 900 !important;
@@ -113,9 +136,29 @@ DARK_CSS = """
         color: #E0E6ED;
     }
 
-    strong {
-        color: #D4AF37 !important;
-        font-weight: 800;
+    strong { color: #D4AF37 !important; font-weight: 800; }
+
+    /* --- MOBILE & TABLET OPTIMIZATION (DARK) --- */
+    @media only screen and (max-width: 768px) {
+        /* Adjust Headings for Small Screens */
+        h1 { font-size: 1.8rem !important; text-align: center; }
+        h2 { font-size: 1.4rem !important; }
+        h3 { font-size: 1.2rem !important; }
+        
+        /* Adjust Text Size */
+        p, div, li, span { font-size: 14px !important; line-height: 1.5 !important; }
+
+        /* Full Width Buttons for Touch */
+        .stButton>button { width: 100% !important; margin-bottom: 5px; }
+
+        /* Sidebar Adjustments */
+        section[data-testid="stSidebar"] { width: 80% !important; }
+        
+        /* Message Bubbles - Less Padding */
+        .stChatMessage { padding: 10px !important; border-radius: 8px !important; }
+
+        /* Thinner Scrollbar for Mobile */
+        ::-webkit-scrollbar { width: 6px; }
     }
 
     /* --- SIDEBAR --- */
@@ -124,14 +167,7 @@ DARK_CSS = """
         border-right: 1px solid #D4AF37;
         box-shadow: 5px 0 15px rgba(0,0,0,0.5);
     }
-
-    section[data-testid="stSidebar"] h1, 
-    section[data-testid="stSidebar"] h2, 
-    section[data-testid="stSidebar"] h3,
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span {
-        color: #E0E6ED !important;
-    }
+    section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span { color: #E0E6ED !important; }
 
     /* --- BUTTONS --- */
     div.stButton > button {
@@ -150,10 +186,7 @@ DARK_CSS = """
         color: #000;
         box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
     }
-
-    div[data-testid="column"] button {
-        width: 100%;
-    }
+    div[data-testid="column"] button { width: 100%; }
 
     /* --- CHAT BOXES --- */
     .stChatMessage {
@@ -177,14 +210,14 @@ DARK_CSS = """
 
     /* --- EXPANDER --- */
     [data-testid="stExpander"] {
-        background-color: #1B1F28 !important; 
+        background-color: #1B1F28 !important;
         border: 1px solid #D4AF37 !important; 
         border-radius: 12px !important;
         box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         margin-top: 20px;
     }
     [data-testid="stExpander"] summary { 
-        color: #D4AF37 !important; 
+        color: #D4AF37 !important;
         font-family: 'Cinzel', serif !important; 
         font-weight: 900 !important; 
     }
@@ -196,8 +229,6 @@ DARK_CSS = """
         color: inherit !important;
         padding: 0.5rem !important;
     }
-
-    /* Chart Text */
     text { fill: #EAEAEA !important; }
 </style>
 """
@@ -218,6 +249,28 @@ LIGHT_CSS = """
         color: #5F6368;
     }
 
+    /* --- LIGHT MODE SCROLLBAR (Classic Grey/Silver) --- */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #F8F9FB; 
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #BFC3C9; 
+        border-radius: 6px;
+        border: 2px solid #F8F9FB;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #9FA4AA; 
+    }
+    /* Firefox */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #BFC3C9 #F8F9FB;
+    }
+
     h1, h2, h3 {
         font-family: 'Cinzel', serif !important;
         color: #2B2E34 !important;
@@ -225,7 +278,7 @@ LIGHT_CSS = """
         letter-spacing: 1.5px;
         font-weight: 900 !important;
         margin-top: 1.5rem;
-        animation: charcoalPulse 4s infinite ease-in-out; 
+        animation: charcoalPulse 4s infinite ease-in-out;
     }
 
     h3 {
@@ -242,6 +295,17 @@ LIGHT_CSS = """
         line-height: 1.6;
     }
     strong { color: #2B2E34; font-weight: 800; }
+
+    /* --- MOBILE & TABLET OPTIMIZATION (LIGHT) --- */
+    @media only screen and (max-width: 768px) {
+        h1 { font-size: 1.8rem !important; text-align: center; }
+        h2 { font-size: 1.4rem !important; }
+        h3 { font-size: 1.2rem !important; }
+        p, li, span, div { font-size: 14px !important; }
+        .stButton>button { width: 100% !important; margin-bottom: 5px; }
+        .stChatMessage { padding: 10px !important; }
+        ::-webkit-scrollbar { width: 6px; }
+    }
 
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF;
@@ -294,10 +358,7 @@ LIGHT_CSS = """
         box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
     .stButton>button:hover { transform: scale(1.05); background: #2B2E34; color: #FFFFFF; }
-
-    div[data-testid="column"] button {
-        width: 100%;
-    }
+    div[data-testid="column"] button { width: 100%; }
 
     [data-testid="stPopover"] > button {
         background: transparent !important;
@@ -310,7 +371,7 @@ LIGHT_CSS = """
 
 
 # ==========================================
-# 🛠️ DATA MANAGEMENT & AUTH (PRIVACY FIX)
+# 🛠️ DATA MANAGEMENT & AUTH
 # ==========================================
 
 def load_json_db(filepath):
@@ -471,8 +532,7 @@ class DocumentProcessor:
     def extract_chat_topics(self, chat_history):
         prompt = f"""
         Analyze the chat history. Identify specific educational subjects/topics discussed (e.g., Mitosis, Gravity, Algebra).
-        Strictly return ONLY a comma-separated list of distinct topics. 
-        List up to 4 topics.
+        Strictly return ONLY a comma-separated list of distinct topics. List up to 4 topics.
         Chat History: {chat_history}
         """
         response = self.llm.invoke([HumanMessage(content=prompt)])
@@ -483,7 +543,6 @@ class DocumentProcessor:
     def generate_quiz_json(self, topic, grade):
         prompt = f"""
         Create a 3-question Multiple Choice Quiz on '{topic}' suitable for {grade}.
-
         REQUIREMENTS:
         1. Questions must be relevant to {grade}.
         2. Provide clear options.
@@ -524,7 +583,7 @@ def text_to_audio(text):
 
 
 # ==========================================
-# 🔄 SESSION & STATE (PRIVACY FIX IMPLEMENTED)
+# 🔄 SESSION & STATE
 # ==========================================
 def load_history_from_disk(username):
     all_data = load_json_db(HISTORY_FILE)
@@ -617,8 +676,9 @@ def delete_chat(session_id):
 def get_chat_title(messages):
     if not messages: return "New Conversation"
     for msg in messages:
-        if msg["role"] == "user":
-            words = msg["content"].split()[:5]
+        if isinstance(msg, dict) and msg.get("role") == "user":
+            content = msg.get("content", "")
+            words = content.split()[:5]
             return " ".join(words)[:25] + "..."
     return "Conversation"
 
@@ -641,7 +701,6 @@ def main():
                 password = st.text_input("Password", type="password", key="login_pass")
                 if st.button("Log In", use_container_width=True):
                     if authenticate_user(username, password):
-                        # 🛡️ PRIVACY FIX: HARD RESET ON LOGIN
                         st.session_state.clear()
                         st.session_state.current_user = username
                         st.rerun()
@@ -658,14 +717,13 @@ def main():
                         st.error("Username already exists.")
         return
 
-        # 2. APP INITIALIZATION
+    # 2. APP INITIALIZATION
     init_session()
 
     # 3. SIDEBAR
     with st.sidebar:
         st.write(f"👤 **Logged in as:** {st.session_state.current_user}")
         if st.button("Logout", type="secondary"):
-            # 🛡️ PRIVACY FIX: HARD RESET ON LOGOUT
             st.session_state.clear()
             st.rerun()
 
@@ -715,13 +773,12 @@ def main():
                 save_history_to_disk(st.session_state.current_user)
                 st.rerun()
 
-        # --- PROGRESS CHART (PANDAS) ---
+        # --- PROGRESS CHART ---
         st.divider()
         with st.expander("📊 Progress Dashboard"):
             scores = load_json_db(QUIZ_FILE).get(st.session_state.current_user, [])
             if scores:
                 df = pd.DataFrame(scores)
-                # Ensure charts look good in both themes by default
                 st.bar_chart(df, x="topic", y="score")
                 st.caption(f"Total Quizzes Taken: {len(scores)}")
             else:
@@ -754,11 +811,9 @@ def main():
 
         st.divider()
         st.session_state['user_grade'] = st.selectbox("Grade:", [f"Grade {i}" for i in range(6, 11)], index=0)
-        # ➕ ADDED MATHEMATICS TO SUBJECTS
         st.session_state['user_subject'] = st.selectbox("Subject:",
                                                         ["Mathematics", "Physics", "Biology", "Chemistry", "Science",
-                                                         "History",
-                                                         "Geography"])
+                                                         "History", "Geography"])
 
         # --- QUIZ GENERATOR ---
         st.divider()
@@ -897,8 +952,7 @@ def main():
                     2. **Details:** Purpose/Location/Phases.
                     3. **Comparison:** Markdown Table (if applicable).
                     4. **Real-World Example:** Relatable analogy.
-
-                    **MATH & PHYSICS RULE (CRITICAL):**
+                    5. **MATH & PHYSICS RULE (CRITICAL):**
                     - If the question is mathematical (Maths/Physics), you MUST solve it **Step-by-Step**.
                     - **Structure for Math:**
                       1. **Formula:** State the formula clearly using LaTeX (e.g., $E=mc^2$).
@@ -907,8 +961,7 @@ def main():
                       4. **Calculation:** Show steps.
                       5. **Result:** Final Answer.
                     - **LaTeX:** Wrap ALL math equations/symbols in dollar signs ($). Example: $x^2 + y^2 = r^2$.
-
-                    **NO IMAGES.** Text only.
+                    6. **NO IMAGES.** Text only.
 
                     Context: {context}
                     Chat History: {chat_history}
@@ -950,4 +1003,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
