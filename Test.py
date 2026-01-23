@@ -88,7 +88,7 @@ DARK_CSS = """
 
     ::-webkit-scrollbar-thumb {
         background: linear-gradient(180deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
-        border-radius: 20px; /* UPDATED: Rounder Scrollbar */
+        border-radius: 20px; 
         border: 2px solid #0A0E14; 
         box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
     }
@@ -168,14 +168,14 @@ DARK_CSS = """
     }
     section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span { color: #E0E6ED !important; }
 
-    /* --- BUTTONS (UPDATED: ROUND CORNERS) --- */
+    /* --- BUTTONS --- */
     div.stButton > button {
         background: linear-gradient(135deg, #D4AF37 0%, #B8962E 100%);
         color: #0A0E14;
         font-family: 'Cinzel', serif;
         font-weight: 900;
         border: none;
-        border-radius: 12px; /* UPDATED from 6px */
+        border-radius: 12px; 
         padding: 0.6rem 1.4rem;
         transition: all 0.3s;
         text-transform: uppercase;
@@ -188,10 +188,10 @@ DARK_CSS = """
     }
     div[data-testid="column"] button { width: 100%; }
 
-    /* --- CHAT BOXES (UPDATED: ROUND CORNERS) --- */
+    /* --- CHAT BOXES --- */
     .stChatMessage {
         background-color: #1B1F28;
-        border-radius: 20px; /* UPDATED from 12px */
+        border-radius: 20px; 
         padding: 15px;
         margin-bottom: 15px;
         border: 1px solid rgba(255, 255, 255, 0.05);
@@ -200,19 +200,19 @@ DARK_CSS = """
     div[data-testid="stChatMessage"]:nth-child(odd) { border-left: 4px solid #8BE9FD; }
     div[data-testid="stChatMessage"]:nth-child(even) { border-left: 4px solid #D4AF37; background-color: #151921; }
 
-    /* --- INPUT FIELDS (UPDATED: ROUND CORNERS) --- */
+    /* --- INPUT FIELDS --- */
     .stTextInput > div > div > input {
         background-color: #1B1F28;
         color: #EAEAEA;
         border: 1px solid #D4AF37;
-        border-radius: 12px; /* UPDATED from 8px */
+        border-radius: 12px; 
     }
 
-    /* --- EXPANDER (UPDATED: ROUND CORNERS) --- */
+    /* --- EXPANDER --- */
     [data-testid="stExpander"] {
         background-color: #1B1F28 !important;
         border: 1px solid #D4AF37 !important; 
-        border-radius: 16px !important; /* UPDATED from 12px */
+        border-radius: 16px !important; 
         box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         margin-top: 20px;
     }
@@ -227,7 +227,7 @@ DARK_CSS = """
         border: 1px solid rgba(255,255,255,0.2) !important;
         color: inherit !important;
         padding: 0.5rem !important;
-        border-radius: 8px !important; /* Added rounding */
+        border-radius: 8px !important;
     }
     text { fill: #EAEAEA !important; }
 </style>
@@ -259,7 +259,7 @@ LIGHT_CSS = """
     }
     ::-webkit-scrollbar-thumb {
         background: #BFC3C9;
-        border-radius: 20px; /* UPDATED: Rounder */
+        border-radius: 20px;
         border: 2px solid #F8F9FB;
     }
     ::-webkit-scrollbar-thumb:hover {
@@ -315,9 +315,9 @@ LIGHT_CSS = """
         color: #2B2E34 !important;
     }
 
-    /* --- CHAT BOXES (UPDATED: ROUND CORNERS) --- */
+    /* --- CHAT BOXES --- */
     .stChatMessage {
-        border-radius: 20px; /* UPDATED from 14px */
+        border-radius: 20px; 
         padding: 15px;
         margin-bottom: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.04);
@@ -326,11 +326,11 @@ LIGHT_CSS = """
     div[data-testid="stChatMessage"]:nth-child(odd) { background-color: #F1F3F6; border: 1px solid #E5E7EB; color: #2B2E34; border-left: 4px solid #BFC3C9; }
     div[data-testid="stChatMessage"]:nth-child(even) { background-color: #FFFFFF; border: 1px solid #E5E7EB; color: #374151; border-left: 4px solid #2B2E34; }
 
-    /* --- EXPANDER (UPDATED: ROUND CORNERS) --- */
+    /* --- EXPANDER --- */
     [data-testid="stExpander"] {
         background-color: #FFFFFF !important;
         border: 2px solid #BFC3C9 !important; 
-        border-radius: 16px !important; /* UPDATED from 14px */
+        border-radius: 16px !important; 
         box-shadow: 0 6px 15px rgba(0,0,0,0.05);
         overflow: hidden;
     }
@@ -340,18 +340,18 @@ LIGHT_CSS = """
     }
     [data-testid="stExpander"] div[data-testid="stMarkdownContainer"] p { color: #5F6368 !important; }
 
-    /* --- INPUTS (UPDATED: ROUND CORNERS) --- */
-    .stTextInput > div > div > input { background-color: #FFFFFF; color: #2B2E34; border: 2px solid #E5E7EB; border-radius: 12px; } /* UPDATED from 8px */
+    /* --- INPUTS --- */
+    .stTextInput > div > div > input { background-color: #FFFFFF; color: #2B2E34; border: 2px solid #E5E7EB; border-radius: 12px; } 
     .stTextInput > div > div > input:focus { border-color: #BFC3C9; box-shadow: 0 0 10px rgba(191, 195, 201, 0.4); }
 
-    /* --- BUTTONS (UPDATED: ROUND CORNERS) --- */
+    /* --- BUTTONS --- */
     .stButton>button {
         background: linear-gradient(135deg, #BFC3C9 0%, #9FA4AA 100%);
         color: #2B2E34;
         font-family: 'Cinzel', serif;
         font-weight: 700;
         border: none;
-        border-radius: 12px; /* UPDATED from 6px */
+        border-radius: 12px; 
         padding: 0.6rem 1.4rem;
         transition: all 0.3s;
         box-shadow: 0 4px 10px rgba(0,0,0,0.1);
@@ -364,7 +364,7 @@ LIGHT_CSS = """
         border: 1px solid #E5E7EB !important;
         color: #2B2E34 !important;
         padding: 0.5rem !important;
-        border-radius: 8px !important; /* Added Rounding */
+        border-radius: 8px !important;
     }
 </style>
 """
@@ -964,41 +964,49 @@ def main():
                     except:
                         grade_num = 6
 
+                    # --- UPDATED LOGIC FOR GRADE VISUAL DIFFERENCES ---
                     if grade_num <= 7:
                         complexity_instruction = """
                         **Target Audience: Grade 6-7 Student.**
-                        - **Definition:** Simple, precise, no jargon.
-                        - **Tone:** Friendly and encouraging.
+                        - **VISUAL LENGTH:** SHORT and CONCISE. Keep answers brief.
+                        - **Tone:** Simple, friendly, easy to understand.
+                        - **Detail:** Focus on basics only.
                         """
                     elif grade_num == 8:
                         complexity_instruction = """
                         **Target Audience: Grade 8 Student.**
-                        - **Definition:** Standard educational definition with examples.
-                        - **Tone:** Informative.
+                        - **VISUAL LENGTH:** MEDIUM. Balanced size.
+                        - **Tone:** Informative and balanced.
+                        - **Detail:** Standard educational depth with examples.
                         """
                     else:
                         complexity_instruction = """
                         **Target Audience: Grade 9-10 Student.**
-                        - **Definition:** Academic, technical, exam-focused,full detailed and proper .
-                        - **Tone:** Professional.
+                        - **VISUAL LENGTH:** LONG and DETAILED.
+                        - **Tone:** Professional, academic, and rigorous.
+                        - **Detail:** Comprehensive, technical, covering nuances.
                         """
 
                     chat_history_str = "\n".join(
                         [f"{m['role']}: {m['content']}" for m in st.session_state.messages[-4:]])
 
-                    # --- UPDATED PROMPT TEMPLATE ---
+                    # --- UPDATED PROMPT: NO IMAGES + USER OVERRIDES ---
                     template_text = """
                     You are NexGen, an expert AI Tutor for {subject}.
                     
                     [SYSTEM RULES]
-                    1. STRICTLY answer only questions related to {subject}. If asked about other topics, politely refuse.
-                    2. Adopt the following Pedagogical Style:
+                    1. STRICTLY answer only questions related to {subject}.
+                    2. **RESPONSE LENGTH & DEPTH (STRICT):**
                     {pedagogy}
                     
-
+                    3. **USER OVERRIDES (CRITICAL):**
+                       - If the user explicitly asks for "detailed", "full explanation", "comprehensive" or "everything about X", **IGNORE** the grade length limit and provide a **LONG, FULLY DETAILED** response.
+                       - If the user explicitly asks for "definition only" or "short", provide **ONLY** the definition or a short summary.
+                       - If the user asks a standard question (e.g., "Difference between X and Y"), follow the [OUTPUT FORMAT] below.
+                    
                     [OUTPUT FORMAT - STRICT MARKDOWN]
                     1. **Core Concept:** (Bold definition)
-                    2. **Key Points:** (Bullet points tailored to grade)
+                    2. **Key Points:** (Bullet points tailored to the allowed length)
                     3. **Comparison:** (Markdown Table IF comparing two things, else 'N/A')
                     4. **Real-World Example:** (Relatable analogy)
                     5. **Problem Solver:** (Use ONLY if the question implies a calculation or physics problem)
@@ -1025,9 +1033,9 @@ def main():
                     response = retrieval_chain.invoke({
                         "input": prompt,
                         "context": docs,
-                        "history": chat_history_str, # Mapped to {history}
+                        "history": chat_history_str,
                         "subject": subject,
-                        "pedagogy": complexity_instruction # Mapped to {pedagogy}
+                        "pedagogy": complexity_instruction 
                     })
 
                     full_response = response["answer"]
@@ -1051,4 +1059,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
