@@ -19,7 +19,7 @@ import hashlib
 import edge_tts
 import re
 import pandas as pd
-import altair as alt # <--- NEW IMPORT FOR GRAPH
+import altair as alt
 from datetime import datetime
 
 # --- IMPORTS ---
@@ -64,13 +64,13 @@ st.set_page_config(
 )
 
 # ==========================================
-# 🎨 CSS STYLING (BOLD + GOLDEN SCROLL + ROUNDED)
+# 🎨 ORIGINAL CSS (RESTORED & IMPROVED)
 # ==========================================
 DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,400&family=Exo+2:wght@400;600;700;800&family=Inter:wght@400;600;800&family=Roboto+Mono&display=swap');
 
-    /* --- ✨ GOLDEN SCROLLBAR FIX --- */
+    /* --- ✨ GOLDEN SCROLLBAR --- */
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-corner { background: transparent; }
@@ -235,7 +235,7 @@ LIGHT_CSS = """
         margin-bottom: 15px;
     }
 
-    /* --- BOLDER FONTS (Light Mode) --- */
+    /* --- BOLDER FONTS --- */
     p, li, span, div, label {
         font-family: 'Exo 2', sans-serif;
         color: #5F6368;
@@ -729,6 +729,16 @@ def main():
                 time.sleep(1)
                 st.rerun()
 
+        uploaded_file = st.file_uploader("📂 Upload PDF", type="pdf")
+        if uploaded_file:
+            if f"processed_{uploaded_file.name}" not in st.session_state:
+                with st.spinner("Processing..."):
+                     if st.session_state.processor.process_uploaded_file(uploaded_file):
+                         st.session_state.db_ready = True
+                         st.session_state[f"processed_{uploaded_file.name}"] = True
+                         st.success("Done!")
+                         time.sleep(1); st.rerun()
+
         # Dashboard Preview (Small)
         with st.expander("📊 Quick Stats"):
             scores = load_json_db(QUIZ_FILE).get(st.session_state.current_user, [])
@@ -813,7 +823,13 @@ def main():
                     You are a {subject} Tutor. 
                     If the user asks about a different subject (e.g. Physics in Math), REFUSE politely.
                     """
+                    
+                    # ⚠️ FIX: SAFE HISTORY STRING GENERATION
+                    history_text = ""
+                    for m in st.session_state.messages[-4:]:
+                        history_text += f"{m['role'].capitalize()}: {m['content']}\n"
 
+                    # ⚠️ FIX: ESCAPE CURLY BRACES for LangChain
                     full_prompt = f"""
                     Role: Expert {grade_str} {subject} Tutor.
                     {guard}
@@ -826,13 +842,15 @@ def main():
                     4. **Real-World Example:**
                     5. **Math/Physics:** (Use LaTeX $$...$$ for formulas. Step-by-step).
 
-                    Context: {docs}
-                    Chat History: {st.session_state.messages[-4:]}
-                    Question: {prompt}
+                    Context: {{context}}
+                    Chat History:
+                    {history_text}
+                    
+                    Question: {{input}}
                     """
 
                     chain = create_stuff_documents_chain(st.session_state.processor.llm, ChatPromptTemplate.from_template(full_prompt))
-                    res = chain.invoke({"context": docs})
+                    res = chain.invoke({"context": docs, "input": prompt})
                     
                     ph.markdown(res)
                     audio_file = text_to_audio(res)
