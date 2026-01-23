@@ -1,4 +1,13 @@
 import os
+# --- 1. SQLITE FIX FOR STREAMLIT CLOUD ---
+# (This is required for ChromaDB to work on Linux)
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass 
+
 import shutil
 import time
 import streamlit as st
@@ -29,18 +38,20 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # ==========================================
-# ⚙️ SYSTEM CONFIGURATION & PATHS
+# ⚙️ SYSTEM CONFIGURATION (CLOUD FRIENDLY)
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BOOKS_FOLDER = r"C:\RAG\BOOKS_FOLDER\resources"  # Ensure this matches your PC
+
+# ⚠️ FIXED PATHS (No more C: drive)
+BOOKS_FOLDER = os.path.join(BASE_DIR, "resources") 
 UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploaded_books")
 PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
 HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 QUIZ_FILE = os.path.join(BASE_DIR, "quiz_scores.json")
 
-# Ensure critical directories exist
-for path in [UPLOAD_DIR, BOOKS_FOLDER]:
+# Ensure directories exist
+for path in [UPLOAD_DIR, BOOKS_FOLDER, PERSIST_DIR]:
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -939,3 +950,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
