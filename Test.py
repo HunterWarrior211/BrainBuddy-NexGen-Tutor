@@ -1,10 +1,13 @@
 import os
-# --- 1. SQLITE FIX FOR STREAMLIT CLOUD (MUST BE AT THE VERY TOP) ---
+
+# --- 1. ROBUST SQLITE FIX FOR STREAMLIT CLOUD ---
+# This block is now crash-proof against KeyError
 try:
     __import__('pysqlite3')
     import sys
+    # Swap sqlite3 with pysqlite3 safely
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
+except (ImportError, KeyError):
     pass 
 
 import shutil
@@ -71,7 +74,6 @@ DARK_CSS = """
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,400&family=Exo+2:wght@300;400;600&family=Inter:wght@400;600&display=swap');
 
     /* --- GOLDEN SCROLLBAR (The Fix) --- */
-    /* WebKit Browsers (Chrome, Edge, Safari) */
     ::-webkit-scrollbar {
         width: 12px;
         height: 12px;
@@ -82,10 +84,10 @@ DARK_CSS = """
     ::-webkit-scrollbar-thumb {
         background: linear-gradient(180deg, #D4AF37, #8B7328); 
         border-radius: 6px;
-        border: 2px solid #0A0E14; /* Creates padding effect */
+        border: 2px solid #0A0E14;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: #FFD700; /* Brighter gold on hover */
+        background: #FFD700;
     }
     
     /* Firefox */
@@ -108,7 +110,7 @@ DARK_CSS = """
         color: #EAEAEA;
     }
 
-    /* --- TYPOGRAPHY (PC) --- */
+    /* --- TYPOGRAPHY --- */
     h1 {
         font-family: 'Cinzel', serif !important;
         font-weight: 900 !important;
@@ -138,26 +140,15 @@ DARK_CSS = """
 
     strong { color: #D4AF37 !important; font-weight: 800; }
 
-    /* --- MOBILE & TABLET OPTIMIZATION (DARK) --- */
+    /* --- MOBILE & TABLET OPTIMIZATION --- */
     @media only screen and (max-width: 768px) {
-        /* Adjust Headings for Small Screens */
         h1 { font-size: 1.8rem !important; text-align: center; }
         h2 { font-size: 1.4rem !important; }
         h3 { font-size: 1.2rem !important; }
-        
-        /* Adjust Text Size */
         p, div, li, span { font-size: 14px !important; line-height: 1.5 !important; }
-
-        /* Full Width Buttons for Touch */
         .stButton>button { width: 100% !important; margin-bottom: 5px; }
-
-        /* Sidebar Adjustments */
         section[data-testid="stSidebar"] { width: 80% !important; }
-        
-        /* Message Bubbles - Less Padding */
         .stChatMessage { padding: 10px !important; border-radius: 8px !important; }
-
-        /* Thinner Scrollbar for Mobile */
         ::-webkit-scrollbar { width: 6px; }
     }
 
@@ -222,7 +213,6 @@ DARK_CSS = """
         font-weight: 900 !important; 
     }
 
-    /* --- POPOVER --- */
     [data-testid="stPopover"] > button {
         background: transparent !important;
         border: 1px solid rgba(255,255,255,0.2) !important;
@@ -249,7 +239,7 @@ LIGHT_CSS = """
         color: #5F6368;
     }
 
-    /* --- LIGHT MODE SCROLLBAR (Classic Grey/Silver) --- */
+    /* --- LIGHT MODE SCROLLBAR --- */
     ::-webkit-scrollbar {
         width: 12px;
         height: 12px;
@@ -296,7 +286,7 @@ LIGHT_CSS = """
     }
     strong { color: #2B2E34; font-weight: 800; }
 
-    /* --- MOBILE & TABLET OPTIMIZATION (LIGHT) --- */
+    /* --- MOBILE & TABLET OPTIMIZATION --- */
     @media only screen and (max-width: 768px) {
         h1 { font-size: 1.8rem !important; text-align: center; }
         h2 { font-size: 1.4rem !important; }
@@ -596,13 +586,15 @@ def save_history_to_disk(username):
     save_json_db(HISTORY_FILE, all_data)
 
 
-def save_quiz_score(topic, score):
+# 🟢 MODIFIED: SAVES OBTAINED MARKS AND TOTAL MARKS
+def save_quiz_score(topic, obtained, total):
     username = st.session_state.current_user
     scores = load_json_db(QUIZ_FILE)
     if username not in scores: scores[username] = []
     scores[username].append({
         "topic": topic,
-        "score": score,
+        "obtained": obtained,   # Changed for clarity
+        "total": total,         # New Field
         "date": datetime.now().strftime("%Y-%m-%d")
     })
     save_json_db(QUIZ_FILE, scores)
@@ -773,13 +765,28 @@ def main():
                 save_history_to_disk(st.session_state.current_user)
                 st.rerun()
 
-        # --- PROGRESS CHART ---
+        # --- 📊 UPDATED PROGRESS DASHBOARD ---
         st.divider()
         with st.expander("📊 Progress Dashboard"):
             scores = load_json_db(QUIZ_FILE).get(st.session_state.current_user, [])
             if scores:
                 df = pd.DataFrame(scores)
-                st.bar_chart(df, x="topic", y="score")
+                
+                # Check if old data structure exists (without 'total') and fix it for display
+                if 'total' not in df.columns:
+                    df['total'] = 3 # Default assumption for old records
+                if 'obtained' not in df.columns and 'score' in df.columns:
+                    df = df.rename(columns={"score": "obtained"})
+
+                # 1. TABLE with Obtained and Total columns
+                st.write("### Recent Quizzes")
+                display_cols = ["topic", "obtained", "total", "date"]
+                st.dataframe(df[display_cols], use_container_width=True)
+                
+                # 2. BAR CHART (Graph of OBTAINED marks)
+                st.write("### Performance Graph (Obtained Marks)")
+                st.bar_chart(df, x="topic", y="obtained")
+                
                 st.caption(f"Total Quizzes Taken: {len(scores)}")
             else:
                 st.info("Take a quiz to see your progress here!")
@@ -869,7 +876,8 @@ def main():
                 st.write("---")
 
             if st.button("Finish & Save Score", use_container_width=True):
-                save_quiz_score(st.session_state.current_quiz_topic, score)
+                # 🟢 UPDATED SAVE FUNCTION: PASS SCORE AND TOTAL
+                save_quiz_score(st.session_state.current_quiz_topic, score, len(quiz_data))
                 st.success("Score Saved to Dashboard!")
                 st.session_state.quiz_data = None
                 st.rerun()
