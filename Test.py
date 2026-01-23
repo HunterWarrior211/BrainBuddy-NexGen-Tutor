@@ -1,12 +1,15 @@
 """
 ====================================================================================================
 APPLICATION:   NexGen Tutor | Titanium Enterprise Edition
-VERSION:       6.0.0 (Build 2024.10.X)
+VERSION:       7.0.0 (Ultimate Build)
 ARCHITECT:     Principal AI Systems Engineer
-FRAMEWORK:     Streamlit + LangChain + Tailwind CSS
-DESCRIPTION:   A hyper-advanced RAG (Retrieval-Augmented Generation) platform designed for
-               educational environments. Features pedagogical guardrails, context-aware 
-               diagram generation, real-time streaming, and an enterprise-grade UI/UX.
+FRAMEWORK:     Streamlit + LangChain + Tailwind CSS + ChromaDB
+DESCRIPTION:   A hyper-advanced educational AI platform. Features:
+               - Pedagogical Guardrails (Grade 6-10 specific logic)
+               - Context-Aware Diagram Generation
+               - Real-time Token Streaming (Typewriter Effect)
+               - Enterprise-grade Authentication & Logging
+               - High-Fidelity UI/UX via Tailwind Injection
 ====================================================================================================
 """
 
@@ -27,7 +30,6 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Generator, Union, Tuple
 
 # --- CORE EXTERNAL DEPENDENCIES ---
-# Ensure these are installed via requirements.txt
 try:
     import streamlit as st
     import pandas as pd
@@ -38,19 +40,19 @@ try:
     # LangChain Ecosystem
     from langchain.chains import create_retrieval_chain
     from langchain.chains.combine_documents import create_stuff_documents_chain
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_community.document_loaders import PyPDFLoader
     from langchain_community.vectorstores import Chroma
     from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-    from langchain_core.runnables import RunnablePassthrough, RunnableConfig
 except ImportError as e:
     st.error(f"❌ CRITICAL BOOT FAILURE: Missing Dependency. {e}")
+    st.info("Please ensure requirements.txt is installed via 'pip install -r requirements.txt'")
     st.stop()
 
 # --- CLOUD COMPATIBILITY LAYER (SQLite Fix) ---
-# Required for ChromaDB functionality on Debian/Linux containers (Streamlit Cloud)
+# Essential for running ChromaDB on Linux/Streamlit Cloud
 try:
     __import__('pysqlite3')
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -58,7 +60,7 @@ except (ImportError, KeyError):
     pass
 
 # ==================================================================================================
-# ⚙️ CONFIGURATION & CONSTANTS
+# ⚙️ SYSTEM CONFIGURATION & CONSTANTS
 # ==================================================================================================
 
 class SystemConfig:
@@ -87,7 +89,7 @@ class SystemConfig:
     EMBEDDING_MODEL = "models/embedding-001"
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
-    SEARCH_K = 6  # Number of documents to retrieve
+    SEARCH_K = 6 
 
     @classmethod
     def initialize_filesystem(cls):
@@ -110,7 +112,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler(SystemConfig.LOGS_PATH),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -124,7 +125,6 @@ logger = logging.getLogger("NexGenCore")
 class Theme(Enum):
     DARK = "Dark"
     LIGHT = "Light"
-    MIDNIGHT = "Midnight"
 
 class UIEngine:
     """
@@ -183,7 +183,7 @@ class UIEngine:
                     --accent: #d4af37;
                     --accent-hover: #fbbf24;
                 }
-                .stApp { background-color: var(--bg-primary); }
+                .stApp { background-color: var(--bg-primary); color: white; }
                 section[data-testid="stSidebar"] { background-color: var(--bg-secondary); border-right: 1px solid var(--accent); }
             </style>
             """
@@ -198,7 +198,7 @@ class UIEngine:
                     --accent: #0f172a;
                     --accent-hover: #334155;
                 }
-                .stApp { background-color: var(--bg-primary); }
+                .stApp { background-color: var(--bg-primary); color: #0f172a; }
                 section[data-testid="stSidebar"] { background-color: var(--bg-secondary); border-right: 1px solid #e2e8f0; }
             </style>
             """
@@ -246,24 +246,6 @@ class UIEngine:
         """
         
         st.markdown(css_animations + theme_vars + st_overrides, unsafe_allow_html=True)
-
-    @staticmethod
-    def render_chat_message(role: str, content: str):
-        """Renders a chat message with advanced HTML/Tailwind styling."""
-        if role == "user":
-            border_col = "border-blue-500"
-            bg_col = "bg-blue-900/20" if st.session_state.theme == Theme.DARK else "bg-blue-50"
-            icon = "👤"
-            align = "justify-end"
-        else:
-            border_col = "border-yellow-600"
-            bg_col = "bg-slate-800/50" if st.session_state.theme == Theme.DARK else "bg-white"
-            icon = "🤖"
-            align = "justify-start"
-
-        # Note: We don't use this currently for the main chat to allow Streamlit's native typewriting, 
-        # but this is available for static message history if needed.
-        pass
 
 
 # ==================================================================================================
@@ -445,17 +427,19 @@ class BrainCore:
         [PEDAGOGY INSTRUCTION]
         {style}
         
-        [DIAGRAM AWARENESS]
-        Analyze if the user's question would benefit from a visual aid (e.g. parts of a cell, circuit diagram, graph).
-        If yes, insert a tag in the format: .
-        Example: 
+        [DIAGRAM TRIGGERING INSTRUCTION]
+        Assess if the user would understand the response better with a diagram.
+        You can insert a diagram by adding the
+ tag where X is a contextually relevant and domain-specific query to fetch the diagram.
+        Examples: 
 
-[Image of Plant Cell Structure]
+[Image of the human digestive system]
 , 
 
-[Image of Pythagorean Theorem Proof]
+[Image of hydrogen fuel cell]
 .
-        Place these tags naturally where the image should appear.
+        Be economical but strategic. Only add if instructive.
+        Place the tag naturally in the text.
         
         [REQUIRED OUTPUT STRUCTURE]
         You must strictly follow this Markdown format:
@@ -466,7 +450,7 @@ class BrainCore:
            - (Bullet Point 2: Mechanism/Process)
            - (Bullet Point 3: Context/Nuance)
         
-        3. **Comparison:** (IF the question involves two concepts, e.g. Mitosis vs Meiosis, Speed vs Velocity, YOU MUST GENERATE A MARKDOWN TABLE. If not, output 'N/A').
+        3. **Comparison:** (IF the question involves two concepts, e.g. Mitosis vs Meiosis, YOU MUST GENERATE A MARKDOWN TABLE. If not, output 'N/A').
         
         4. **Real-World Example:** (A relatable application or analogy for a student).
         
@@ -482,7 +466,7 @@ class BrainCore:
         {{input}}
         """
         
-        # Inject History String
+        # Inject History String manually to safely handle curly braces
         history_str = ""
         if "messages" in st.session_state:
             for m in st.session_state.messages[-4:]:
@@ -704,7 +688,7 @@ def render_main_interface():
         
         # Library Sync
         if st.button("SYNC KNOWLEDGE BASE", use_container_width=True):
-            if st.session_state.brain.ingest_library(SystemConfig.RESOURCES_DIR):
+            if st.session_state.brain.ingest_document(SystemConfig.RESOURCES_DIR): # Simplified call for demo
                 st.session_state.db_ready = True
                 st.success("Database Synchronized.")
                 time.sleep(1); st.rerun()
@@ -863,9 +847,9 @@ def render_main_interface():
                         clean_text = re.sub(r'[*_#`\[\]]', '', full_response) # Remove MD and Image tags
                         async def gen_audio():
                             comm = edge_tts.Communicate(clean_text, "en-GB-SoniaNeural")
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-                                await comm.save(fp.name)
-                                return fp.name
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+                                await comm.save(f.name)
+                                return f.name
                         audio_file = asyncio.run(gen_audio())
                         if audio_file: st.audio(audio_file)
                     except: pass
