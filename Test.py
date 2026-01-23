@@ -1,879 +1,681 @@
-"""
-====================================================================================================
-APPLICATION:   NexGen Tutor | Titanium Enterprise Edition (v12.0)
-ARCHITECT:     Principal AI Systems Engineer
-FRAMEWORK:     Streamlit + LangChain + Tailwind CSS + ChromaDB
-STATUS:        Production Ready
-DESCRIPTION:   A monolithic, high-availability educational platform featuring:
-               - Self-Healing Dependency Loader
-               - Neural RAG (Retrieval Augmented Generation)
-               - Real-time Token Streaming (Typewriter Effect)
-               - Context-Aware Diagram Injection (
-
-[Image of X]
-)
-               - Grade-Specific Pedagogical Guardrails
-               - High-Fidelity Tailwind UI
-====================================================================================================
-"""
-
 import os
-import sys
+
+# --- 1. ROBUST SQLITE FIX FOR STREAMLIT CLOUD ---
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except (ImportError, KeyError):
+    pass 
+
+import shutil
 import time
-import json
+import streamlit as st
+import tempfile
 import uuid
-import re
-import logging
+import json
 import asyncio
 import hashlib
-import shutil
-import tempfile
-import threading
-import random
-import importlib
-from enum import Enum
-from datetime import datetime
-from typing import List, Dict, Optional, Any, Generator, Union, Tuple
-
-# ==================================================================================================
-# 🛠️ DEPENDENCY DIAGNOSTICS & LOADER
-# ==================================================================================================
-
-class DependencyLoader:
-    """
-    Advanced module loader that performs self-diagnostics on import failures.
-    Ensures the environment is correctly set up before crashing.
-    """
-    
-    REQUIRED_MODULES = [
-        ("streamlit", "st"),
-        ("pandas", "pd"),
-        ("altair", "alt"),
-        ("edge_tts", "edge_tts"),
-        ("langchain.chains", "chains"),
-        ("langchain_community.vectorstores", "Chroma"),
-        ("langchain_google_genai", "ChatGoogleGenerativeAI")
-    ]
-
-    @classmethod
-    def load_core(cls):
-        """Attempts to load all critical modules."""
-        missing = []
-        for package, alias in cls.REQUIRED_MODULES:
-            try:
-                importlib.import_module(package)
-            except ImportError as e:
-                missing.append(f"{package} ({str(e)})")
-        
-        if missing:
-            st.error(f"❌ CRITICAL BOOT FAILURE: The following modules failed to load:\n" + "\n".join(missing))
-            st.warning("👉 SOLUTION: Open 'requirements.txt' and ensure 'langchain' and 'langchain-community' are listed.")
-            st.stop()
-
-# Run Diagnostics
-DependencyLoader.load_core()
-
-# --- NATIVE IMPORTS (Safe to run now) ---
-import streamlit as st
+import edge_tts
+import re
 import pandas as pd
 import altair as alt
-import edge_tts
-import numpy as np
+from datetime import datetime
 
-# LangChain Ecosystem
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+# --- IMPORTS ---
+try:
+    from langchain.chains import create_retrieval_chain
+    from langchain.chains.combine_documents import create_stuff_documents_chain
+except ImportError:
+    from langchain_classic.chains import create_retrieval_chain
+    from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-# --- CLOUD COMPATIBILITY PATCH ---
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except (ImportError, KeyError):
-    pass
+# ==========================================
+# ⚙️ SYSTEM CONFIGURATION & PATHS
+# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+BOOKS_FOLDER = os.path.join(BASE_DIR, "resources") 
+UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploaded_books")
+PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
+HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
+QUIZ_FILE = os.path.join(BASE_DIR, "quiz_scores.json")
 
-# ==================================================================================================
-# ⚙️ SYSTEM CONFIGURATION CONTROLLER
-# ==================================================================================================
+for path in [UPLOAD_DIR, BOOKS_FOLDER, PERSIST_DIR]:
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-class SystemConfig:
-    """
-    Global configuration state manager.
-    Controls filesystem paths, AI model parameters, and system constants.
-    """
-    APP_NAME = "NexGen Tutor"
-    APP_VERSION = "12.0.0 (Titanium)"
-    APP_ICON = "🎓"
-    
-    # Filesystem Architecture
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    RESOURCES_DIR = os.path.join(BASE_DIR, "resources")
-    UPLOAD_DIR = os.path.join(BASE_DIR, "temp_ingest")
-    DB_DIR = os.path.join(BASE_DIR, "chroma_vector_store")
-    
-    # Persistence Stores
-    HISTORY_PATH = os.path.join(BASE_DIR, "data_history.json")
-    USERS_PATH = os.path.join(BASE_DIR, "data_users.json")
-    STATS_PATH = os.path.join(BASE_DIR, "data_stats.json")
-    LOGS_PATH = os.path.join(BASE_DIR, "system_audit.log")
-
-    # Neural Configuration
-    LLM_MODEL = "gemini-2.5-flash"
-    EMBEDDING_MODEL = "models/embedding-001"
-    CHUNK_SIZE = 1000
-    CHUNK_OVERLAP = 200
-    SEARCH_K = 5
-
-    @classmethod
-    def bootstrap(cls):
-        """Bootstraps the application environment."""
-        # 1. Create Directory Structure
-        for d in [cls.RESOURCES_DIR, cls.UPLOAD_DIR, cls.DB_DIR]:
-            os.makedirs(d, exist_ok=True)
-        
-        # 2. Initialize Data Stores
-        for f in [cls.HISTORY_PATH, cls.USERS_PATH, cls.STATS_PATH]:
-            if not os.path.exists(f):
-                with open(f, 'w') as file:
-                    json.dump({}, file)
-
-# Initialize System
-SystemConfig.bootstrap()
-
-# Configure Enterprise Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(module)s: %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+st.set_page_config(
+    page_title="NexGen Tutor | AI Learning Platform",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-logger = logging.getLogger("NexGenCore")
 
+# ==========================================
+# 🎨 ULTRA-PREMIUM CSS (ROUNDED & GOLDEN)
+# ==========================================
+DARK_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Exo+2:wght@400;600;800&family=Inter:wght@400;600&display=swap');
 
-# ==================================================================================================
-# 🔐 AUTHENTICATION & SECURITY ENGINE
-# ==================================================================================================
-
-class AuthEngine:
-    """
-    Manages User Identity, Credential Hashing, and Session Validation.
-    """
-    
-    @staticmethod
-    def _read_db() -> Dict:
-        try:
-            with open(SystemConfig.USERS_PATH, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Auth Read Error: {e}")
-            return {}
-
-    @staticmethod
-    def _write_db(data: Dict):
-        try:
-            with open(SystemConfig.USERS_PATH, "w") as f:
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            logger.error(f"Auth Write Error: {e}")
-
-    @staticmethod
-    def hash_token(secret: str) -> str:
-        """Applies SHA-256 encryption to user credentials."""
-        return hashlib.sha256(secret.encode()).hexdigest()
-
-    @classmethod
-    def authenticate(cls, username, password) -> bool:
-        db = cls._read_db()
-        return username in db and db[username] == cls.hash_token(password)
-
-    @classmethod
-    def register_identity(cls, username, password) -> Tuple[bool, str]:
-        db = cls._read_db()
-        if username in db:
-            return False, "Identity conflict: Username exists."
-        db[username] = cls.hash_token(password)
-        cls._write_db(db)
-        return True, "Identity registered successfully."
-
-
-# ==================================================================================================
-# 📊 ANALYTICS & METRICS ENGINE
-# ==================================================================================================
-
-class AnalyticsEngine:
-    """
-    Tracks user performance, quiz scores, and engagement metrics.
-    """
-    
-    @staticmethod
-    def log_quiz_result(user: str, topic: str, score: int, total: int):
-        if not os.path.exists(SystemConfig.STATS_PATH): return
-        
-        try:
-            with open(SystemConfig.STATS_PATH, 'r') as f: 
-                data = json.load(f)
-            
-            user_data = data.get(user, [])
-            user_data.append({
-                "id": str(uuid.uuid4())[:8],
-                "topic": topic,
-                "score": score,
-                "total": total,
-                "percentage": round((score/total)*100, 1),
-                "timestamp": datetime.now().isoformat()
-            })
-            data[user] = user_data
-            
-            with open(SystemConfig.STATS_PATH, 'w') as f:
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            logger.error(f"Analytics Error: {e}")
-
-    @staticmethod
-    def get_user_stats(user: str) -> pd.DataFrame:
-        try:
-            with open(SystemConfig.STATS_PATH, 'r') as f:
-                data = json.load(f)
-            return pd.DataFrame(data.get(user, []))
-        except:
-            return pd.DataFrame()
-
-
-# ==================================================================================================
-# 🎓 PEDAGOGY ENGINE (GRADE LOGIC)
-# ==================================================================================================
-
-class PedagogyEngine:
-    """
-    Determines the tone, complexity, and structure of AI responses
-    based on the user's Grade Level (6-10).
-    """
-    
-    @staticmethod
-    def get_instruction_set(grade_str: str) -> str:
-        try:
-            grade = int(re.search(r'\d+', grade_str).group())
-        except:
-            grade = 9 # Default
-
-        if grade == 6:
-            return """
-            TARGET AUDIENCE: Grade 6 (Age 11-12).
-            TONE: Enthusiastic, Simple, Story-telling.
-            RULES:
-            - Use short sentences.
-            - Avoid complex jargon; if used, define it immediately.
-            - Use emojis to keep it engaging 🌟.
-            - Max 3 bullet points per section.
-            """
-        elif grade == 7:
-            return """
-            TARGET AUDIENCE: Grade 7 (Age 12-13).
-            TONE: Clear, Encouraging, Informative.
-            RULES:
-            - Focus on the 'Why' and 'How'.
-            - Use analogies from daily life.
-            - Keep explanations concise.
-            """
-        elif grade == 8:
-            return """
-            TARGET AUDIENCE: Grade 8 (Age 13-14).
-            TONE: Academic but accessible.
-            RULES:
-            - Standard textbook definitions.
-            - Introduce formal terminology.
-            - Moderate detail in explanations.
-            """
-        elif grade == 9:
-            return """
-            TARGET AUDIENCE: Grade 9 (Age 14-15).
-            TONE: Formal, Preparatory, Scientific.
-            RULES:
-            - Detailed theoretical background.
-            - Explicit mention of formulas and laws.
-            - Focus on application of concepts.
-            """
-        else: # Grade 10
-            return """
-            TARGET AUDIENCE: Grade 10 (Board Exam Level).
-            TONE: Professional, Technical, Comprehensive.
-            RULES:
-            - Deep dive into mechanisms.
-            - Focus on keywords for exam scoring.
-            - Point-wise structured answers strictly.
-            - High technical density.
-            """
-
-
-# ==================================================================================================
-# 🎨 UI MANAGER (TAILWIND & CSS)
-# ==================================================================================================
-
-class UIManager:
-    """
-    Injects Tailwind CSS and Custom Styles to achieve the 'Titanium' look.
-    """
-    
-    THEMES = {
-        "Dark": {
-            "bg": "#0f172a", "card": "#1e293b", "text": "#f8fafc", "accent": "#d4af37"
-        },
-        "Light": {
-            "bg": "#f8fafc", "card": "#ffffff", "text": "#0f172a", "accent": "#0f172a"
-        }
+    /* --- ✨ GOLDEN SCROLLBAR (HIGH VISIBILITY) ✨ --- */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+        background: #0A0E14;
+    }
+    ::-webkit-scrollbar-track {
+        background: #11161F;
+        border-left: 1px solid #333;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #FFD700, #B8860B, #FFD700);
+        border-radius: 6px;
+        border: 2px solid #0A0E14;
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #FFFACD, #FFD700, #FFFACD);
+        box-shadow: 0 0 25px rgba(255, 215, 0, 1);
     }
 
-    @staticmethod
-    def load_assets(theme_name: str):
-        """Injects HTML/CSS headers."""
-        
-        # 1. Tailwind CDN
-        st.markdown('<script src="https://cdn.tailwindcss.com"></script>', unsafe_allow_html=True)
-        
-        # 2. Font Imports
-        st.markdown("""
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Exo+2:wght@400;600;700&display=swap');
-        </style>
-        """, unsafe_allow_html=True)
+    /* --- GLOBAL THEME --- */
+    .stApp {
+        background-color: #0A0E14;
+        background-image: radial-gradient(#1B1F28 1px, transparent 1px);
+        background-size: 30px 30px;
+        color: #EAEAEA;
+    }
 
-        # 3. Dynamic CSS
-        t_key = "Dark" if "Dark" in theme_name else "Light"
-        t = UIManager.THEMES[t_key]
-        
-        css = f"""
-        <style>
-            /* GLOBAL RESET */
-            .stApp {{
-                background-color: {t['bg']};
-                color: {t['text']};
-            }}
-            
-            /* TYPOGRAPHY */
-            h1, h2, h3 {{
-                font-family: 'Cinzel', serif !important;
-                color: {t['accent']} !important;
-                font-weight: 900 !important;
-                letter-spacing: 0.05em;
-            }}
-            
-            p, li, span, label, div {{
-                font-family: 'Exo 2', sans-serif !important;
-                font-weight: 500;
-            }}
-            
-            /* SIDEBAR */
-            section[data-testid="stSidebar"] {{
-                background-color: {t['card']};
-                border-right: 1px solid {t['accent']};
-            }}
-            
-            /* INPUTS */
-            .stTextInput input, .stSelectbox div[data-baseweb="select"] {{
-                background-color: {t['card']};
-                color: {t['text']};
-                border: 1px solid {t['accent']};
-                border-radius: 0.5rem;
-            }}
-            
-            /* BUTTONS */
-            .stButton > button {{
-                background: linear-gradient(135deg, {t['accent']} 0%, #b49028 100%);
-                color: #000000;
-                font-family: 'Cinzel', serif;
-                font-weight: 800;
-                border: none;
-                border-radius: 0.5rem;
-                text-transform: uppercase;
-                transition: transform 0.2s;
-            }}
-            .stButton > button:hover {{
-                transform: scale(1.02);
-                box-shadow: 0 0 15px {t['accent']};
-                color: white;
-            }}
-            
-            /* CHAT BUBBLES */
-            .stChatMessage {{
-                background-color: {t['card']};
-                border: 1px solid rgba(255,255,255,0.05);
-                border-radius: 1rem;
-                padding: 1.5rem;
-                animation: fadeIn 0.5s ease-out;
-            }}
-            @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-            
-            /* GOLDEN SCROLLBAR */
-            ::-webkit-scrollbar {{ width: 10px; }}
-            ::-webkit-scrollbar-track {{ background: transparent; }}
-            ::-webkit-scrollbar-thumb {{
-                background: linear-gradient(180deg, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
-                border-radius: 5px;
-                border: 2px solid transparent;
-                background-clip: content-box;
-            }}
-            ::-webkit-scrollbar-thumb:hover {{ background: #FFD700; }}
-        </style>
-        """
-        st.markdown(css, unsafe_allow_html=True)
+    /* --- SIDEBAR TYPOGRAPHY (PROMINENT) --- */
+    section[data-testid="stSidebar"] {
+        background-color: #141A24;
+        border-right: 2px solid #D4AF37;
+    }
+    section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
+        color: #D4AF37 !important;
+        font-family: 'Cinzel', serif !important;
+        text-shadow: 0px 0px 5px rgba(212, 175, 55, 0.5);
+    }
+    section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] label {
+        color: #FFFFFF !important;
+        font-size: 1.1rem !important; /* Larger text */
+        font-weight: 600 !important;   /* Thicker font */
+        font-family: 'Exo 2', sans-serif !important;
+    }
 
-
-# ==================================================================================================
-# 🧠 NEURAL CORE (RAG & LLM)
-# ==================================================================================================
-
-class NeuralCore:
-    """
-    The brain of the system.
-    Encapsulates ChromaDB, Gemini, and the Retrieval Chain.
-    """
+    /* --- ROUNDED CORNERS (MINI MILITIA STYLE) --- */
+    div.stButton > button {
+        background: linear-gradient(135deg, #D4AF37 0%, #B8962E 100%);
+        color: #0A0E14;
+        font-family: 'Exo 2', sans-serif;
+        font-weight: 800;
+        border: none;
+        border-radius: 18px !important; /* ROUNDED */
+        padding: 0.6rem 1.4rem;
+        transition: all 0.3s;
+        text-transform: uppercase;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    div.stButton > button:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+        color: #000;
+    }
     
-    def __init__(self):
-        self.vector_store = None
-        self._init_keys()
-        
-        # LLM Initialization
-        self.llm = ChatGoogleGenerativeAI(
-            model=SystemConfig.LLM_MODEL,
-            temperature=0.6,
-            max_retries=3,
-            streaming=True
-        )
-        self.embeddings = GoogleGenerativeAIEmbeddings(model=SystemConfig.EMBEDDING_MODEL)
+    /* Inputs & Selectboxes */
+    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+        background-color: #1B1F28;
+        color: #EAEAEA;
+        border: 1px solid #D4AF37;
+        border-radius: 18px !important; /* ROUNDED */
+    }
 
-    def _init_keys(self):
-        """Loads API keys from Secrets or Local Config."""
-        key = os.environ.get("GOOGLE_API_KEY")
-        if not key:
+    /* --- CHAT BUBBLES --- */
+    .stChatMessage {
+        background-color: #1B1F28;
+        border-radius: 20px !important; /* ROUNDED */
+        padding: 20px;
+        margin-bottom: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    div[data-testid="stChatMessage"]:nth-child(odd) { 
+        border-left: 5px solid #8BE9FD; 
+        border-radius: 20px 20px 20px 4px !important;
+    }
+    div[data-testid="stChatMessage"]:nth-child(even) { 
+        border-right: 5px solid #D4AF37; 
+        border-radius: 20px 20px 4px 20px !important;
+        background-color: #151921;
+    }
+
+    h1, h2, h3 { font-family: 'Cinzel', serif !important; color: #D4AF37 !important; }
+    p, li { font-family: 'Exo 2', sans-serif; font-size: 16px; line-height: 1.7; }
+    strong { color: #D4AF37 !important; }
+</style>
+"""
+
+LIGHT_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Exo+2:wght@400;600;800&display=swap');
+
+    /* --- LIGHT MODE SCROLLBAR --- */
+    ::-webkit-scrollbar { width: 12px; height: 12px; }
+    ::-webkit-scrollbar-thumb {
+        background: #BFC3C9;
+        border-radius: 6px;
+        border: 2px solid #F8F9FB;
+    }
+
+    .stApp { background-color: #F8F9FB; color: #2B2E34; }
+
+    /* Sidebar Prominence */
+    section[data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 2px solid #BFC3C9;
+    }
+    section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] label {
+        color: #2B2E34 !important;
+        font-size: 1.1rem !important;
+        font-weight: 700 !important;
+    }
+
+    /* Rounded UI */
+    div.stButton > button {
+        background: linear-gradient(135deg, #BFC3C9 0%, #9FA4AA 100%);
+        color: #2B2E34;
+        border-radius: 18px !important;
+        font-weight: 800;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+        background-color: #FFFFFF;
+        color: #2B2E34;
+        border: 2px solid #E5E7EB;
+        border-radius: 18px !important;
+    }
+
+    .stChatMessage {
+        border-radius: 20px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.04);
+    }
+    
+    h1, h2, h3 { font-family: 'Cinzel', serif !important; color: #2B2E34 !important; }
+</style>
+"""
+
+# ==========================================
+# 🛠️ DATA MANAGEMENT & AUTH
+# ==========================================
+def load_json_db(filepath):
+    if not os.path.exists(filepath): return {}
+    try:
+        with open(filepath, "r", encoding="utf-8") as f: return json.load(f)
+    except: return {}
+
+def save_json_db(filepath, data):
+    try:
+        with open(filepath, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
+    except: pass
+
+def hash_password(password):
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
+def authenticate_user(username, password):
+    users = load_json_db(USERS_FILE)
+    if username in users and users[username] == hash_password(password): return True
+    return False
+
+def register_new_user(username, password):
+    users = load_json_db(USERS_FILE)
+    if username in users: return False
+    users[username] = hash_password(password)
+    save_json_db(USERS_FILE, users)
+    return True
+
+# ==========================================
+# 🧠 DOCUMENT & AI ENGINE
+# ==========================================
+class DocumentProcessor:
+    def __init__(self):
+        self.vectordb_doc = None
+        self.splits = []
+        
+        # API Key Handling
+        if "GOOGLE_API_KEY" not in os.environ:
             try:
                 if "GOOGLE_API_KEY" in st.secrets:
-                    key = st.secrets["GOOGLE_API_KEY"]
+                    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
                 else:
-                    path = os.path.join(SystemConfig.BASE_DIR, ".streamlit", "secrets.toml")
-                    if os.path.exists(path):
-                        with open(path, "r") as f:
+                    local_secrets = os.path.join(BASE_DIR, ".streamlit", "secrets.toml")
+                    if os.path.exists(local_secrets):
+                        with open(local_secrets, "r") as f:
                             for line in f:
                                 if "GOOGLE_API_KEY" in line:
-                                    key = line.split("=")[1].strip().strip('"').strip("'")
+                                    os.environ["GOOGLE_API_KEY"] = line.split("=")[1].strip().strip('"').strip("'")
             except: pass
-        
-        if key:
-            os.environ["GOOGLE_API_KEY"] = key
-        else:
-            st.error("⚠️ CRITICAL: Google API Key Missing. Please add it to secrets.")
+
+        if "GOOGLE_API_KEY" not in os.environ:
+            st.error("⚠️ API Key Missing! Check secrets.")
             st.stop()
 
-    def connect_memory(self) -> bool:
-        """Connects to the Vector Database."""
-        if os.path.exists(SystemConfig.DB_DIR):
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, max_retries=2)
+
+    def load_from_disk(self):
+        if os.path.exists(PERSIST_DIR):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            self.vectordb_doc = Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
             try:
-                self.vector_store = Chroma(
-                    persist_directory=SystemConfig.DB_DIR,
-                    embedding_function=self.embeddings
-                )
-                if self.vector_store._collection.count() > 0:
-                    return True
-            except Exception as e:
-                logger.error(f"DB Connect Fail: {e}")
+                if self.vectordb_doc._collection.count() > 0: return True
+            except: return False
         return False
 
-    def ingest_data(self, file_path: str) -> bool:
-        """Ingests a single PDF into the Neural Memory."""
+    def process_local_library(self):
+        if not os.path.exists(BOOKS_FOLDER): return False
+        pdf_files = [f for f in os.listdir(BOOKS_FOLDER) if f.lower().endswith(".pdf")]
+        if not pdf_files: return False
+
+        all_docs = []
+        bar = st.progress(0, "Scanning Library...")
+        for i, f in enumerate(pdf_files):
+            try:
+                loader = PyPDFLoader(os.path.join(BOOKS_FOLDER, f))
+                all_docs.extend(loader.load())
+                bar.progress((i + 1) / len(pdf_files))
+            except: pass
+        bar.empty()
+
+        if not all_docs: return False
+        self.splits = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=80).split_documents(all_docs)
+        return self.create_embeddings_batched()
+
+    def process_uploaded_file(self, uploaded_file):
+        temp_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+        with open(temp_path, "wb") as f: f.write(uploaded_file.getbuffer())
+
         try:
-            loader = PyPDFLoader(file_path)
+            loader = PyPDFLoader(temp_path)
             docs = loader.load()
-            if not docs: return False
-            
-            splitter = RecursiveCharacterTextSplitter(
-                chunk_size=SystemConfig.CHUNK_SIZE,
-                chunk_overlap=SystemConfig.CHUNK_OVERLAP
-            )
-            splits = splitter.split_documents(docs)
-            
-            # Initialize DB if needed
-            if self.vector_store is None:
-                self.vector_store = Chroma.from_documents(
-                    splits[:20], 
-                    self.embeddings, 
-                    persist_directory=SystemConfig.DB_DIR
-                )
-                splits = splits[20:]
-            
-            # Batch Add
-            batch_size = 40
-            total = len(splits)
-            if total > 0:
-                bar = st.progress(0, "Neural Encoding...")
-                for i in range(0, total, batch_size):
-                    batch = splits[i:i+batch_size]
-                    self.vector_store.add_documents(batch)
-                    bar.progress(min((i+batch_size)/total, 1.0))
-                    time.sleep(0.05)
-                bar.empty()
-            
-            return True
+            check = self.llm.invoke([HumanMessage(content=f"Is this educational? YES/NO. Text: {docs[0].page_content[:500]}")]).content
+            if "NO" in check.upper():
+                st.error("🚫 Educational content only.")
+                os.remove(temp_path)
+                return False
+
+            self.splits = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=80).split_documents(docs)
+            os.remove(temp_path)
+            return self.create_embeddings_batched()
         except Exception as e:
-            logger.error(f"Ingest Fail: {e}")
-            st.error(f"Ingestion Error: {e}")
+            st.error(f"Error: {e}")
             return False
 
-    def build_chain(self, grade: str, subject: str) -> Any:
-        """Constructs the RAG Chain with Grade-Specific Logic."""
-        retriever = self.vector_store.as_retriever(search_kwargs={"k": SystemConfig.SEARCH_K})
+    def create_embeddings_batched(self):
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        batch_size = 20
+        total = len(self.splits)
         
-        pedagogy = PedagogyEngine.get_instruction_set(grade)
-        
-        template = """
-        You are NexGen, an expert AI Tutor for {subject}.
-        
-        [SYSTEM RULES]
-        1. STRICTLY answer only questions related to {subject}. If asked about other topics, politely refuse.
-        2. Adopt the following Pedagogical Style:
-           {pedagogy}
-        
-        [DIAGRAM TRIGGERING INSTRUCTION]
-        Assess if the user would understand the response better with a diagram. 
-        You can insert a diagram by adding the 
+        if self.vectordb_doc is None:
+            self.vectordb_doc = Chroma.from_documents(self.splits[:batch_size], embeddings, persist_directory=PERSIST_DIR)
+            start = batch_size
+        else:
+            start = 0
 
-[Image of X]
- tag where X is a contextually relevant and domain-specific query to fetch the diagram. 
-        Examples: 
+        bar = st.progress(0, "Memorizing...")
+        for i in range(start, total, batch_size):
+            self.vectordb_doc.add_documents(self.splits[i:i+batch_size])
+            bar.progress(min((i + batch_size) / total, 1.0))
+            time.sleep(0.05)
+        bar.empty()
+        return True
 
-[Image of the human digestive system]
-, 
+    def extract_chat_topics(self, chat_history):
+        prompt = f"Analyze chat history: {chat_history}. Return comma-separated list of 4 distinct educational topics."
+        res = self.llm.invoke([HumanMessage(content=prompt)])
+        return [t.strip() for t in res.content.split(',')[:4]]
 
-[Image of hydrogen fuel cell]
- etc. 
-        Avoid triggering images just for visual appeal. Only add if instructive.
-        Place the image tag immediately before or after the relevant text without disrupting the flow.
-        
-        [OUTPUT FORMAT - STRICT MARKDOWN]
-        1. **Core Concept:** (Bold definition)
-        
-        2. **Key Points:** - (Bullet Point 1: Detailed explanation suitable for {grade})
-           - (Bullet Point 2: Mechanism/Process)
-           - (Bullet Point 3: Context/Nuance)
-        
-        3. **Comparison:** (IF the question implies a difference between two concepts, YOU MUST GENERATE A MARKDOWN TABLE. If not, output 'N/A').
-        
-        4. **Real-World Example:** (A relatable application or analogy for a student).
-        
-        5. **Math/Physics Solver:** (If the query is a problem, solve it step-by-step using LaTeX inside $$...$$. State Formula -> Given -> Substitute -> Result).
-
-        [CONTEXT FROM TEXTBOOK]
-        {{context}}
-        
-        [HISTORY]
-        {history}
-        
-        [QUESTION]
-        {{input}}
-        """
-        
-        # History Injection
-        hist_txt = ""
-        if "messages" in st.session_state:
-            for m in st.session_state.messages[-4:]:
-                hist_txt += f"{m['role'].capitalize()}: {m['content']}\n"
-
-        final_prompt = template.format(
-            subject=subject,
-            pedagogy=pedagogy,
-            history=hist_txt
-        )
-        
-        prompt = ChatPromptTemplate.from_template(final_prompt)
-        doc_chain = create_stuff_documents_chain(self.llm, prompt)
-        return create_retrieval_chain(retriever, doc_chain)
-
-    def generate_quiz(self, topic: str, grade: str) -> List[Dict]:
-        """Generates a JSON Quiz."""
+    def generate_quiz_json(self, topic, grade):
         prompt = f"""
-        Create 3 Multiple Choice Questions (MCQ) on '{topic}' for {grade}.
-        Output RAW JSON ONLY. Format:
-        [
-            {{"question": "...", "options": ["A","B","C","D"], "answer": "Option Text", "explanation": "..."}}
-        ]
+        Create a 3-question Multiple Choice Quiz on '{topic}' for {grade}.
+        Return ONLY valid JSON: 
+        [{{ "question": "...", "options": ["A)...", "B)..."], "answer": "A)...", "explanation": "..." }}]
         """
+        res = self.llm.invoke([HumanMessage(content=prompt)])
         try:
-            res = self.llm.invoke([HumanMessage(content=prompt)])
-            txt = res.content.replace("```json", "").replace("```", "").strip()
-            return json.loads(txt)
+            content = res.content.strip().replace("```json", "").replace("```", "")
+            return json.loads(content)
         except: return []
 
-    def detect_topics(self, text: str) -> List[str]:
-        prompt = f"Extract top 3 academic topics from this chat. Comma separated. Chat: {text[-1000:]}"
-        try:
-            res = self.llm.invoke([HumanMessage(content=prompt)])
-            return [t.strip() for t in res.content.split(',') if t.strip()]
-        except: return []
+async def generate_edge_audio(text, filename):
+    communicate = edge_tts.Communicate(text, "en-GB-SoniaNeural")
+    await communicate.save(filename)
 
+def text_to_audio(text):
+    try:
+        clean = re.sub(r'[\*\#\$]', '', text)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+            filename = fp.name
+        asyncio.run(generate_edge_audio(clean, filename))
+        return filename
+    except: return None
 
-# ==================================================================================================
-# 🎮 CONTROLLER (SESSION & EVENTS)
-# ==================================================================================================
+# ==========================================
+# 🔄 SESSION STATE
+# ==========================================
+def load_history_from_disk(username):
+    return load_json_db(HISTORY_FILE).get(username, {})
 
-class AppController:
-    """
-    Main Application Logic Controller.
-    """
-    
-    @staticmethod
-    def init_session():
-        defaults = {
-            "current_user": None,
-            "theme": "Dark Mode 🌑 (Cosmic Gold)",
-            "messages": [],
-            "saved_chats": {},
-            "current_chat_id": None,
-            "brain": None,
-            "db_ready": False,
-            "quiz_data": None
-        }
-        for k, v in defaults.items():
-            if k not in st.session_state:
-                st.session_state[k] = v
-        
-        if st.session_state.brain is None:
-            st.session_state.brain = NeuralCore()
+def save_history_to_disk(username):
+    all_data = load_json_db(HISTORY_FILE)
+    all_data[username] = st.session_state.saved_chats
+    save_json_db(HISTORY_FILE, all_data)
 
-    @staticmethod
-    def load_profile():
-        if st.session_state.current_user:
-            # In real app, load history from HISTORY_PATH
-            if os.path.exists(SystemConfig.HISTORY_PATH):
-                with open(SystemConfig.HISTORY_PATH, 'r') as f:
-                    hist = json.load(f)
-                    st.session_state.saved_chats = hist.get(st.session_state.current_user, {})
-            
-            if not st.session_state.saved_chats:
-                AppController.new_chat()
-            
-            if not st.session_state.current_chat_id and st.session_state.saved_chats:
-                st.session_state.current_chat_id = list(st.session_state.saved_chats.keys())[-1]
-                st.session_state.messages = st.session_state.saved_chats[st.session_state.current_chat_id]
+def save_quiz_score(topic, obtained, total):
+    username = st.session_state.current_user
+    scores = load_json_db(QUIZ_FILE)
+    if username not in scores: scores[username] = []
+    scores[username].append({"topic": topic, "obtained": obtained, "total": total, "date": datetime.now().strftime("%Y-%m-%d")})
+    save_json_db(QUIZ_FILE, scores)
 
-    @staticmethod
-    def new_chat():
-        uid = str(uuid.uuid4())
-        st.session_state.current_chat_id = uid
-        st.session_state.saved_chats[uid] = []
-        st.session_state.messages = []
-        AppController.save_state()
+def init_session():
+    if "current_user" not in st.session_state: st.session_state.current_user = None
+    if st.session_state.current_user:
+        user = st.session_state.current_user
+        if "saved_chats" not in st.session_state: st.session_state.saved_chats = load_history_from_disk(user)
+        if "processor" not in st.session_state: 
+            st.session_state.processor = DocumentProcessor()
+            st.session_state.db_ready = False
+        if "current_chat_id" not in st.session_state: new_chat()
+        if "messages" not in st.session_state: st.session_state.messages = []
 
-    @staticmethod
-    def save_state():
-        if st.session_state.current_user and st.session_state.current_chat_id:
-            st.session_state.saved_chats[st.session_state.current_chat_id] = st.session_state.messages
-            
-            if os.path.exists(SystemConfig.HISTORY_PATH):
-                with open(SystemConfig.HISTORY_PATH, 'r') as f: full = json.load(f)
-            else: full = {}
-            
-            full[st.session_state.current_user] = st.session_state.saved_chats
-            with open(SystemConfig.HISTORY_PATH, 'w') as f: json.dump(full, f)
+def new_chat():
+    uid = str(uuid.uuid4())
+    st.session_state.current_chat_id = uid
+    st.session_state.saved_chats[uid] = []
+    st.session_state.messages = []
+    st.session_state.show_quiz = False
+    st.session_state.quiz_data = None
+    if "detected_topics" in st.session_state: del st.session_state.detected_topics
+    save_history_to_disk(st.session_state.current_user)
 
+def load_chat(session_id):
+    st.session_state.current_chat_id = session_id
+    st.session_state.messages = list(st.session_state.saved_chats.get(session_id, []))
+    st.session_state.show_quiz = False
+    st.session_state.quiz_data = None
 
-# ==================================================================================================
-# 🚀 MAIN EXECUTION LOOP
-# ==================================================================================================
+def delete_chat(session_id):
+    if session_id in st.session_state.saved_chats:
+        del st.session_state.saved_chats[session_id]
+        save_history_to_disk(st.session_state.current_user)
+    new_chat()
 
+def get_chat_title(messages):
+    if not messages: return "New Conversation"
+    for msg in messages:
+        if msg.get("role") == "user": return " ".join(msg.get("content", "").split()[:5])[:25] + "..."
+    return "Conversation"
+
+# ==========================================
+# 🖥️ MAIN UI
+# ==========================================
 def main():
-    st.set_page_config(page_title=SystemConfig.APP_NAME, page_icon=SystemConfig.APP_ICON, layout="wide")
-    AppController.init_session()
-
-    # --- 1. LOGIN VIEW ---
-    if not st.session_state.current_user:
-        UIManager.load_assets("Dark") # Force Dark for cinematic login
-        
+    if 'current_user' not in st.session_state or st.session_state.current_user is None:
+        st.markdown(DARK_CSS, unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
-            st.markdown(f"<h1 class='text-center text-5xl text-amber-400 mb-2'>{SystemConfig.APP_ICON}</h1>", unsafe_allow_html=True)
-            st.markdown(f"<h1 class='text-center'>{SystemConfig.APP_NAME}</h1>", unsafe_allow_html=True)
-            
-            tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
+            st.title("NexGen Tutor Login")
+            tab1, tab2 = st.tabs(["Login", "Sign Up"])
             with tab1:
-                u = st.text_input("Username", key="l1")
-                p = st.text_input("Password", type="password", key="l2")
-                if st.button("AUTHENTICATE", use_container_width=True):
-                    if AuthEngine.authenticate(u, p):
+                u, p = st.text_input("Username"), st.text_input("Password", type="password")
+                if st.button("Log In", use_container_width=True):
+                    if authenticate_user(u, p):
+                        st.session_state.clear()
                         st.session_state.current_user = u
                         st.rerun()
-                    else: st.error("Invalid Credentials")
+                    else: st.error("Invalid")
             with tab2:
-                nu = st.text_input("New User", key="r1")
-                np = st.text_input("New Pass", type="password", key="r2")
-                if st.button("CREATE ACCOUNT", use_container_width=True):
-                    ok, msg = AuthEngine.register_identity(nu, np)
-                    if ok: st.success(msg)
-                    else: st.error(msg)
+                nu, np = st.text_input("New User"), st.text_input("New Pass", type="password")
+                if st.button("Sign Up", use_container_width=True):
+                    if register_new_user(nu, np): st.success("Created! Log in.")
+                    else: st.error("Exists.")
         return
 
-    # --- 2. MAIN DASHBOARD ---
-    AppController.load_profile()
-    
-    # Sidebar
+    init_session()
+
+    # --- SIDEBAR LAYOUT (REORDERED AS REQUESTED) ---
     with st.sidebar:
-        st.markdown(f"### 👤 {st.session_state.current_user}")
-        if st.button("LOGOUT", type="secondary"):
-            st.session_state.clear()
-            st.rerun()
+        st.write(f"👤 **{st.session_state.current_user}**")
         
-        st.divider()
-        st.markdown("### 📚 ACADEMIC SETTINGS")
-        st.session_state.grade = st.selectbox("Level", [f"Grade {i}" for i in range(6, 11)])
-        st.session_state.subject = st.selectbox("Subject", ["Mathematics", "Physics", "Biology", "Chemistry", "History", "Computer Science"])
-        
-        st.divider()
-        with st.expander("🧠 INTELLIGENT QUIZ"):
-            if st.button("🚀 ANALYZE CONTEXT", use_container_width=True):
-                hist = "\n".join([m['content'] for m in st.session_state.messages])
-                st.session_state.topics = st.session_state.brain.detect_topics(hist)
-            
-            if st.session_state.get("topics"):
-                topic = st.radio("Focus:", st.session_state.topics + ["Custom..."])
-                if topic == "Custom...": topic = st.text_input("Topic")
-                
-                if st.button("GENERATE EXAM", type="primary", use_container_width=True):
-                    with st.spinner("Compiling..."):
-                        st.session_state.quiz_data = st.session_state.brain.generate_quiz(topic, st.session_state.grade)
-                        st.session_state.q_topic = topic
-                        st.rerun()
+        # Theme Selector
+        theme = st.radio("Theme", ["Dark Mode 🌑", "Light Mode ☀️"], horizontal=True, label_visibility="collapsed")
+        if "Dark" in theme:
+            st.markdown(DARK_CSS, unsafe_allow_html=True)
+            chart_color = '#D4AF37'
+        else:
+            st.markdown(LIGHT_CSS, unsafe_allow_html=True)
+            chart_color = '#2B2E34'
 
         st.divider()
-        c1, c2 = st.columns(2)
-        if c1.button("✨ NEW"):
-            AppController.new_chat()
-            st.rerun()
-        if c2.button("🗑️ WIPE"):
-            st.session_state.messages = []
-            AppController.save_state()
-            st.rerun()
+
+        # 1. GRADE & SUBJECT (ON TOP)
+        st.header("1. Study Settings")
+        st.session_state['user_grade'] = st.selectbox("Select Grade:", [f"Grade {i}" for i in range(6, 11)], index=0)
+        st.session_state['user_subject'] = st.selectbox("Select Subject:", ["Mathematics", "Physics", "Biology", "Chemistry", "History", "Geography"])
+
+        st.divider()
+
+        # 2. ACTIONS & QUIZ
+        st.header("2. Actions")
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("✨ New Chat", use_container_width=True):
+                new_chat()
+                st.rerun()
+        with col_act2:
+            if st.button("🗑️ Reset", use_container_width=True):
+                st.session_state.messages = []
+                st.session_state.saved_chats[st.session_state.current_chat_id] = []
+                st.rerun()
+        
+        # Quiz Section
+        with st.expander("🧠 Take a Quiz", expanded=True):
+            if st.button("🚀 Identify Topics", use_container_width=True):
+                if st.session_state.messages:
+                    hist = "\n".join([m['content'] for m in st.session_state.messages])
+                    st.session_state.detected_topics = st.session_state.processor.extract_chat_topics(hist)
+                    st.rerun()
+                else: st.warning("Chat first!")
             
-        with st.expander("📜 ARCHIVES"):
-            for cid in reversed(list(st.session_state.saved_chats.keys())):
-                msgs = st.session_state.saved_chats[cid]
-                label = "New Chat"
-                for m in msgs:
-                    if m['role'] == 'user':
-                        label = " ".join(m['content'].split()[:4]) + "..."
-                        break
-                if st.button(label, key=cid, use_container_width=True):
-                    st.session_state.current_chat_id = cid
-                    st.session_state.messages = msgs
+            if "detected_topics" in st.session_state:
+                topic = st.radio("Pick Topic:", st.session_state.detected_topics)
+                if st.button("Start Quiz", use_container_width=True):
+                    st.session_state.quiz_data = st.session_state.processor.generate_quiz_json(topic, st.session_state['user_grade'])
+                    st.session_state.current_quiz_topic = topic
                     st.rerun()
 
         st.divider()
-        st.markdown("### ⚙️ SYSTEM")
-        theme_choice = st.radio("Theme", ["Dark Mode 🌑 (Cosmic Gold)", "Light Mode ☀️ (Platinum Silver)"], horizontal=True)
-        UIManager.load_assets(theme_choice)
-        
-        if st.button("🔄 SYNC DATABASE", use_container_width=True):
-            if st.session_state.brain.ingest_data(SystemConfig.RESOURCES_DIR): # Simplified bulk ingest not shown, implies file loop
-                st.session_state.db_ready = True
-                st.success("Synced")
-        
-        up_file = st.file_uploader("UPLOAD PDF", type="pdf")
-        if up_file:
-            path = os.path.join(SystemConfig.UPLOAD_DIR, up_file.name)
-            with open(path, "wb") as f: f.write(up_file.getbuffer())
-            if st.session_state.brain.ingest_data(path):
-                st.session_state.db_ready = True
-                st.success("Ingested")
-                os.remove(path)
 
-        # Dashboard
-        with st.expander("📊 METRICS"):
-            stats = AnalyticsEngine.get_user_stats(st.session_state.current_user)
-            if not stats.empty:
-                st.dataframe(stats[['topic', 'score', 'date']], use_container_width=True)
+        # 3. CHAT HISTORY
+        st.header("3. History")
+        with st.container(height=200):
+            for sid in reversed(list(st.session_state.saved_chats.keys())):
+                title = get_chat_title(st.session_state.saved_chats[sid])
+                if st.button(f"🗨️ {title}", key=sid, use_container_width=True):
+                    load_chat(sid)
+                    st.rerun()
+
+        st.divider()
+
+        # 4. DASHBOARD (BOTTOM)
+        st.header("4. Progress")
+        with st.expander("📊 View Results"):
+            scores = load_json_db(QUIZ_FILE).get(st.session_state.current_user, [])
+            if scores:
+                df = pd.DataFrame(scores)
+                if 'total' not in df.columns: df['total'] = 3
                 
-                # Chart
-                c = alt.Chart(stats).mark_bar(color='#D4AF37').encode(
-                    x='topic', y='score', tooltip=['topic', 'score']
-                ).properties(height=200)
-                st.altair_chart(c, use_container_width=True)
+                chart = alt.Chart(df).mark_bar(color=chart_color, cornerRadiusEnd=4).encode(
+                    x=alt.X('topic:N', title=None),
+                    y=alt.Y('obtained:Q', title='Score'),
+                    tooltip=['topic', 'obtained', 'total']
+                ).properties(height=150)
+                st.altair_chart(chart, use_container_width=True)
             else:
-                st.info("No data yet.")
+                st.info("No quizzes taken yet.")
+        
+        # Utils
+        if st.button("🔄 Sync Library", type="secondary"):
+            st.session_state.processor.process_local_library()
+            st.rerun()
+        
+        up_file = st.file_uploader("Upload PDF", type="pdf")
+        if up_file:
+            if f"proc_{up_file.name}" not in st.session_state:
+                st.session_state.processor.process_uploaded_file(up_file)
+                st.session_state[f"proc_{up_file.name}"] = True
+                st.session_state.db_ready = True
+                st.rerun()
 
-    # Content
-    st.title(SystemConfig.APP_NAME)
-    
-    if not st.session_state.db_ready:
-        if st.session_state.brain.connect_memory():
-            st.session_state.db_ready = True
-        else:
-            st.info("👈 Please **Sync Database** or **Upload PDF** to initialize Neural Core.")
-
-    # Quiz Render
-    if st.session_state.get("quiz_data"):
-        st.markdown(f"### 📝 {st.session_state.q_topic}")
+    # --- MAIN CONTENT ---
+    # Quiz Display
+    if st.session_state.get('quiz_data'):
+        st.subheader(f"📝 Quiz: {st.session_state.get('current_quiz_topic')}")
         score = 0
         for i, q in enumerate(st.session_state.quiz_data):
-            st.markdown(f"**Q{i+1}: {q['question']}**")
-            ans = st.radio("Select:", q['options'], key=f"q{i}", label_visibility="collapsed")
-            if ans == q['answer']:
-                st.success("Correct")
-                score += 1
-            elif ans:
-                st.error("Incorrect")
-                st.info(q['explanation'])
-            st.markdown("---")
-        if st.button("SAVE RESULT", type="primary"):
-            AnalyticsEngine.log_quiz_result(st.session_state.current_user, st.session_state.q_topic, score, 3)
-            st.success("Saved")
+            st.write(f"**Q{i+1}: {q['question']}**")
+            ans = st.radio(f"Options {i}", q['options'], key=f"q_{i}", index=None)
+            if ans:
+                if ans == q['answer']: 
+                    st.success("Correct!")
+                    score += 1
+                else: 
+                    st.error(f"Wrong. Answer: {q['answer']}")
+                    st.info(q['explanation'])
+            st.write("---")
+        
+        if st.button("Save Score"):
+            save_quiz_score(st.session_state.current_quiz_topic, score, len(st.session_state.quiz_data))
             st.session_state.quiz_data = None
             st.rerun()
+        return
 
-    # Chat
+    # Chat Interface
+    st.title("NexGen Tutor")
+    
+    if not st.session_state.db_ready:
+        if st.session_state.processor.load_from_disk(): st.session_state.db_ready = True
+        else: st.info("👈 Upload a PDF or Sync Library to start learning.")
+
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg.get("audio"): st.audio(msg["audio"])
+            if msg.get("audio") and os.path.exists(msg["audio"]): st.audio(msg["audio"])
 
-    if prompt := st.chat_input(f"Ask about {st.session_state.subject}..."):
+    if prompt := st.chat_input("Ask a question..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
-        
+
         if st.session_state.db_ready:
             with st.chat_message("assistant"):
-                box = st.empty()
-                full_text = ""
                 try:
-                    chain = st.session_state.brain.build_chain(st.session_state.grade, st.session_state.subject)
+                    retriever = st.session_state.processor.vectordb_doc.as_retriever()
+                    docs = retriever.invoke(prompt)
                     
-                    # Streaming
-                    for chunk in chain.stream({"input": prompt}):
-                        if "answer" in chunk:
-                            full_text += chunk["answer"]
-                            box.markdown(full_text + "▌")
-                            time.sleep(0.005)
+                    # --- PROMPT LOGIC PER GRADE ---
+                    grade_str = st.session_state.get('user_grade', 'Grade 6')
+                    grade_num = int(re.search(r'\d+', grade_str).group()) if re.search(r'\d+', grade_str) else 6
+                    subject = st.session_state.get('user_subject', 'Science')
+
+                    if grade_num == 6:
+                        instructions = """
+                        **TARGET: Grade 6 Student (Beginner)**
+                        - **Length:** SHORT, PRECISE, SIMPLE.
+                        - **Structure:** Only Main Points.
+                        - **Style:** No complex words. Use bullet points heavily.
+                        - **Visuals:** Create a clear distinction between concepts.
+                        """
+                    elif grade_num == 7:
+                        instructions = """
+                        **TARGET: Grade 7 Student**
+                        - **Length:** Moderate.
+                        - **Structure:** Definition + 1 Example.
+                        - **Style:** Friendly but educational.
+                        - **Detail:** A bit more detail than Grade 6, but still simple.
+                        """
+                    elif grade_num == 8:
+                        instructions = """
+                        **TARGET: Grade 8 Student**
+                        - **Length:** Standard.
+                        - **Structure:** Definition + 2 Examples.
+                        - **Style:** Informative.
+                        - **Detail:** Include 'How' and 'Why'.
+                        """
+                    elif grade_num == 9:
+                        instructions = """
+                        **TARGET: Grade 9 Student (High School)**
+                        - **Length:** Detailed.
+                        - **Structure:** Proper Definition + Process + Real World Application.
+                        - **Style:** Academic/Formal.
+                        - **Visuals:** Use Markdown tables for comparisons.
+                        """
+                    else: # Grade 10+
+                        instructions = """
+                        **TARGET: Grade 10 Student (Exam Prep)**
+                        - **Length:** COMPREHENSIVE & COMPLETE.
+                        - **Structure:** In-depth analysis.
+                        - **Style:** Professional, Technical, Exam-Oriented.
+                        - **Requirement:** Visually distinct depth. Cover exceptions and formulas.
+                        """
+
+                    template = """
+                    You are an expert AI tutor with 100+ years of experience.
+                    Context: {context}
+                    Chat History: {chat_history}
                     
-                    box.markdown(full_text)
+                    **USER SETTINGS:**
+                    Grade: {grade} | Subject: {subject}
+                    Instructions: {complexity_instruction}
+
+                    **MANDATORY RESPONSE STRUCTURE (Follow Strictly):**
+                    1. **CORE CONCEPT:** A clear, standout definition suitable for the grade.
+                    2. **MAIN CONCEPTS:** Bullet points explaining the key mechanisms.
+                    3. **COMPARISON TABLE:** If the user asks for a difference (e.g., Mitosis vs Meiosis), YOU MUST use a Markdown Table.
+                    4. **REAL-WORLD EXAMPLE:** An analogy the student can relate to immediately.
+                    5. **MATH/PHYSICS RULE:** If math is involved, use LaTeX ($x^2$) and solve Step-by-Step.
+                    6. **NO IMAGES.**
+
+                    Question: {input}
+                    """
                     
-                    # Audio
-                    aud = None
-                    try:
-                        clean = re.sub(r'[*_#`\[\]]', '', full_text)
-                        async def gen_tts():
-                            c = edge_tts.Communicate(clean, "en-GB-SoniaNeural")
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-                                await c.save(f.name)
-                                return f.name
-                        aud = asyncio.run(gen_tts())
-                        if aud: st.audio(aud)
-                    except: pass
+                    hist_str = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-4:]])
+                    custom_prompt = ChatPromptTemplate.from_template(template)
+                    chain = create_retrieval_chain(retriever, create_stuff_documents_chain(st.session_state.processor.llm, custom_prompt))
                     
-                    st.session_state.messages.append({"role": "assistant", "content": full_text, "audio": aud})
-                    AppController.save_state()
+                    res = chain.invoke({
+                        "input": prompt, "context": docs, "chat_history": hist_str,
+                        "grade": grade_str, "subject": subject, "complexity_instruction": instructions
+                    })
                     
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                    full_res = res["answer"]
+                    st.markdown(full_res)
+                    
+                    audio_path = text_to_audio(full_res)
+                    if audio_path: st.audio(audio_path)
+                    
+                    st.session_state.messages.append({"role": "assistant", "content": full_res, "audio": audio_path})
+                    save_history_to_disk(st.session_state.current_user)
+                    
+                except Exception as e: st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
