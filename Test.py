@@ -4,9 +4,10 @@ import os
 try:
     __import__('pysqlite3')
     import sys
+
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 except (ImportError, KeyError):
-    pass 
+    pass
 
 import shutil
 import time
@@ -19,7 +20,7 @@ import hashlib
 import edge_tts
 import re
 import pandas as pd
-import altair as alt 
+import altair as alt
 from datetime import datetime
 
 # --- IMPORTS ---
@@ -43,7 +44,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-BOOKS_FOLDER = os.path.join(BASE_DIR, "resources") 
+BOOKS_FOLDER = os.path.join(BASE_DIR, "resources")
 UPLOAD_DIR = os.path.join(BASE_DIR, "temp_uploaded_books")
 PERSIST_DIR = os.path.join(BASE_DIR, "chroma_db")
 HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
@@ -70,18 +71,18 @@ DARK_CSS = """
 <style>
     /* --- FONTS --- */
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Playfair+Display:ital,wght@0,700;1,400&family=Exo+2:wght@300;400;600&family=Inter:wght@400;600&display=swap');
-    
+
     /* --- ✨ HYPER-GLOW GOLDEN SCROLLBAR ✨ --- */
     ::-webkit-scrollbar {
         width: 10px;
         height: 10px;
     }
-    
+
     ::-webkit-scrollbar-track {
         background: transparent;
         margin-block: 5px;
     }
-    
+
     ::-webkit-scrollbar-corner {
         background: transparent;
     }
@@ -724,7 +725,7 @@ def main():
 
         if "Dark Mode" in theme_choice:
             st.markdown(DARK_CSS, unsafe_allow_html=True)
-            chart_bg_color = '#1B1F28' 
+            chart_bg_color = '#1B1F28'
             chart_text_color = '#D4AF37'
         else:
             st.markdown(LIGHT_CSS, unsafe_allow_html=True)
@@ -737,8 +738,8 @@ def main():
         st.header("🎓 Academic Settings")
         st.session_state['user_grade'] = st.selectbox("Grade:", [f"Grade {i}" for i in range(6, 11)], index=0)
         st.session_state['user_subject'] = st.selectbox("Subject:",
-                                                         ["Mathematics", "Physics", "Biology", "Chemistry", "Science",
-                                                          "History", "Geography"])
+                                                        ["Mathematics", "Physics", "Biology", "Chemistry", "Science",
+                                                         "History", "Geography"])
 
         st.divider()
 
@@ -767,8 +768,8 @@ def main():
                     if final_quiz_topic:
                         with st.spinner(f"Generating Quiz on {final_quiz_topic}..."):
                             q_data = st.session_state.processor.generate_quiz_json(final_quiz_topic,
-                                                                                    st.session_state.get('user_grade',
-                                                                                                         'Grade 8'))
+                                                                                   st.session_state.get('user_grade',
+                                                                                                        'Grade 8'))
                             st.session_state.quiz_data = q_data
                             st.session_state.current_quiz_topic = final_quiz_topic
                         st.rerun()
@@ -777,7 +778,7 @@ def main():
 
         # --- 4. NEW CHAT / RESET / SYSTEM (MOVED HERE) ---
         st.header("⚙️ Controls")
-        
+
         # System/Setup Buttons (Essential functionality)
         if st.button("🔄 Sync Local Library"):
             with st.spinner("Scanning Library..."):
@@ -797,7 +798,7 @@ def main():
                         st.success("Educational Material Accepted!")
                         time.sleep(1)
                         st.rerun()
-        
+
         # New Chat / Reset Buttons
         col_new, col_reset = st.columns([1, 1])
         with col_new:
@@ -850,25 +851,25 @@ def main():
             scores = load_json_db(QUIZ_FILE).get(st.session_state.current_user, [])
             if scores:
                 df = pd.DataFrame(scores)
-                
+
                 # Cleanup Data (handle old records)
                 if 'total' not in df.columns: df['total'] = 3
                 if 'obtained' not in df.columns and 'score' in df.columns:
                     df = df.rename(columns={"score": "obtained"})
-                
+
                 # 1. TABLE
                 st.markdown("### 📝 Recent Scores")
                 display_cols = ["topic", "obtained", "total", "date"]
                 st.dataframe(df[display_cols], use_container_width=True)
-                
+
                 # 2. CUSTOM ALTAIR CHART
                 st.markdown("### 📈 Performance Visualizer")
-                
+
                 # Base: Total Marks (Dotted Line / Hollow Bar)
                 total_chart = alt.Chart(df).mark_bar(
-                    stroke='#E0E0E0' if "Light" in theme_choice else '#FFFFFF', 
+                    stroke='#E0E0E0' if "Light" in theme_choice else '#FFFFFF',
                     strokeWidth=2,
-                    strokeDash=[4, 4], # Dotted effect
+                    strokeDash=[4, 4],  # Dotted effect
                     fill=None,
                     opacity=0.6,
                     cornerRadiusEnd=4
@@ -880,7 +881,7 @@ def main():
                 # Overlay: Obtained Marks (Solid Gold Bar)
                 obtained_chart = alt.Chart(df).mark_bar(
                     color='#D4AF37',
-                    width=15, 
+                    width=15,
                     cornerRadiusEnd=4
                 ).encode(
                     x=alt.X('topic:N', title='Quiz Topic', axis=alt.Axis(labelAngle=-45)),
@@ -891,11 +892,10 @@ def main():
                 # Combine
                 final_chart = (total_chart + obtained_chart).properties(height=250)
                 st.altair_chart(final_chart, use_container_width=True)
-                
+
                 st.caption(f"Total Quizzes Taken: {len(scores)}")
             else:
                 st.info("Take a quiz to see your progress here!")
-
 
         # --- QUIZ DISPLAY (Main Content Area Logic) ---
         if st.session_state.get('quiz_data'):
@@ -1005,6 +1005,26 @@ def main():
                       5. **Result:** Final Answer.
                     - **LaTeX:** Wrap ALL math equations/symbols in dollar signs ($). Example: $x^2 + y^2 = r^2$.
                     6. **NO IMAGES.** Text only.
+
+        
+                  [SYSTEM RULES]
+        1. STRICTLY answer only questions related to {subject}. If asked about other topics, politely refuse.
+        2. Adopt the following Pedagogical Style:
+           {pedagogy}
+        
+        [DIAGRAM TRIGGERING INSTRUCTION]
+        Assess if the user would understand the response better with a diagram. 
+        You can insert a diagram by adding the  tag where X is a contextually relevant and domain-specific query to fetch the diagram. 
+        Examples: ,  etc. 
+        Place the image tag immediately before or after the relevant text.
+        
+        [OUTPUT FORMAT - STRICT MARKDOWN]
+        1. **Core Concept:** (Bold definition)
+        2. **Key Points:** (Bullet points tailored to grade)
+        3. **Comparison:** (Markdown Table IF comparing two things, else 'N/A')
+        4. **Real-World Example:** (Relatable analogy)
+        5. **Problem Solver:** (If calculation needed: Formula -> Steps -> Result in LaTeX $$...$$)
+
 
                     Context: {context}
                     Chat History: {chat_history}
