@@ -1,13 +1,13 @@
-pip install -r requirements.txt
 streamlit
+pandas
+fpdf
+edge-tts
 langchain
 langchain-community
-langchain-core
 langchain-google-genai
 langchain-text-splitters
+google-generativeai
 chromadb
 pypdf
-edge-tts
-pandas
-altair
+plotly
 pysqlite3-binary
